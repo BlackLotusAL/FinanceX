@@ -341,6 +341,65 @@ class Import(unittest.TestCase):
         self.assertEqual(st["alipay"], ("suspect_keep", True, 1))
         self.assertEqual(st["abc"], ("suspect_drop", False, 0))
 
+    def test_income_not_paired_with_card_expense(self):
+        conn = fresh()
+        alipay = ("交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
+                  "2026-09-29 19:02:11,转账,公司,x,报销,收入,100.00,余额,交易成功,A9,,\n").encode("gbk")
+        lines = ["260930 260930 1234 消费 某商店 -100.00/CNY -100.00/CNY"]
+        orig = parsers._pdf_text
+        parsers._pdf_text = lambda data: lines
+        try:
+            pv = importer.preview(conn, [
+                {"name": "a.csv", "data": base64.b64encode(alipay).decode()},
+                {"name": "c.pdf", "data": base64.b64encode(b"x").decode()}])
+            self.assertEqual([(r["type"], r["state"]) for r in pv["rows"]], [("income", "ok"), ("expense", "ok")])
+            importer.confirm(conn, pv["files"], [pv["rows"][0]])  # 收入已入账后再导信用卡，也不应配对
+            pv2 = importer.preview(conn, [{"name": "c.pdf", "data": base64.b64encode(b"x").decode()}])
+        finally:
+            parsers._pdf_text = orig
+        self.assertEqual(pv2["rows"][0]["state"], "ok")
+
+
+class HttpGuards(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import threading
+        from http.server import ThreadingHTTPServer
+        fresh().close()
+        cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        cls.port = cls.httpd.server_address[1]
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+
+    def req(self, method, path, body=None, headers=None):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        h = {"Host": f"127.0.0.1:{self.port}", **(headers or {})}
+        c.request(method, path, body=body, headers=h)
+        r = c.getresponse()
+        r.read()
+        c.close()
+        return r.status
+
+    def test_cross_site_writes_rejected(self):
+        body = '{"date":"2026-09-01","amount":1,"type":"income"}'
+        self.assertEqual(self.req("POST", "/api/flows", body, {"Content-Type": "text/plain",
+                                                               "Origin": "https://evil.example"}), 403)
+        self.assertEqual(self.req("POST", "/api/flows", body, {"Content-Type": "text/plain"}), 403)
+        self.assertEqual(self.req("POST", "/api/flows", body, {"Content-Type": "application/json",
+                                                               "Origin": "https://evil.example"}), 403)
+        self.assertEqual(self.req("GET", "/api/meta", headers={"Host": "evil.example"}), 403)
+        self.assertEqual(self.req("POST", "/api/flows", body, {
+            "Content-Type": "application/json", "Origin": f"http://127.0.0.1:{self.port}"}), 200)
+
+    def test_report_year_validated(self):
+        self.assertEqual(self.req("GET", "/api/is?year=%3Cimg%20src%3Dx%3E"), 400)
+        self.assertEqual(self.req("GET", "/api/cf?year=2026"), 200)
+
 
 def make_xlsx(rows):
     shared, idx = [], {}

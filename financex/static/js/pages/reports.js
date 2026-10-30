@@ -14,7 +14,7 @@ export async function render(root, { name }) {
 // ---------- 资产负债表 ----------
 async function renderBS(root) {
   const q = qs();
-  const d = await get(`/api/bs${q.month ? `?month=${q.month}` : ''}`);
+  const d = await get(`/api/bs${/^\d{4}-\d{2}$/.test(q.month || '') ? `?month=${q.month}` : ''}`);
   const sel = `<label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding-bottom:8px">月份<select name="month" aria-label="选择月份">${[...d.months].reverse().map(m => `<option value="${m}"${m === d.month ? ' selected' : ''}>${monthLabel(m)}</option>`).join('') || '<option>还没有快照</option>'}</select></label>`;
   const det = d.detail;
   let body;
@@ -64,20 +64,20 @@ let IS = { open: new Set(), drill: null };
 
 async function renderIS(root) {
   const q = qs();
-  const d = await get(`/api/is${q.year ? `?year=${q.year}` : ''}`);
+  const d = await get(`/api/is${/^\d{4}$/.test(q.year || '') ? `?year=${q.year}` : ''}`);
   IS.root = root; IS.d = d;
   if (IS.year !== d.year) { IS.year = d.year; IS.drill = null; }
   drawIS();
 }
 
 function yearSel(years, y) {
-  return `<label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding-bottom:8px">年份<select name="year" aria-label="选择年份">${years.map(v => `<option${v === y ? ' selected' : ''}>${v}</option>`).join('')}</select></label>`;
+  return `<label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;padding-bottom:8px">年份<select name="year" aria-label="选择年份">${years.map(v => `<option${v === y ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`;
 }
 
 function drawIS() {
   const d = IS.d, ms = d.months;
   const t = d.total;
-  const period = ms.length ? `${d.year} 年 ${ms.length === 1 ? '1' : `1–${ms[ms.length - 1]}`} 月` : `${d.year} 年`;
+  const period = ms.length ? `${esc(d.year)} 年 ${ms.length === 1 ? '1' : `1–${ms[ms.length - 1]}`} 月` : `${esc(d.year)} 年`;
   const grid = `grid-template-columns:minmax(150px,1.6fr) repeat(${ms.length},minmax(64px,1fr)) minmax(80px,1.1fr)`;
   const cell = (v, key, extra = '') => {
     const blank = Math.abs(v) < 0.5;
@@ -110,7 +110,7 @@ function drawIS() {
 
   IS.root.innerHTML = `<div class="pg">${strip()}<div class="wrap">${reportHeader('is', yearSel(d.years, d.year))}
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;padding:20px 0 14px">
-<div style="display:flex;flex-direction:column;gap:8px"><span class="kick">利润表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">${d.year === new Date().getFullYear().toString() ? '今年' : d.year + ' 年'}结余 ${fmt(t.balance, 0)}${t.rate !== null ? `，储蓄率 ${(t.rate * 100).toFixed(1)}%` : ''}</h1>
+<div style="display:flex;flex-direction:column;gap:8px"><span class="kick">利润表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">${d.year === new Date().getFullYear().toString() ? '今年' : esc(d.year) + ' 年'}结余 ${fmt(t.balance, 0)}${t.rate !== null ? `，储蓄率 ${(t.rate * 100).toFixed(1)}%` : ''}</h1>
 <p class="dek">收入 <b>${fmt(t.income, 0)}</b>，支出 <b>${fmt(t.expense, 0)}</b>。由流水按两级分类、按月汇总；只记人民币已实现部分，外币收益与浮动盈亏只体现在净资产里。</p></div>
 <span class="mut" style="font-size:12px">一级始终显示；二级只列当年有发生额的，点 ▸ 展开</span></div>
 <div style="border-top:5px solid #141414"></div>
@@ -135,7 +135,7 @@ function bindIS() {
 
 async function showISDrill() {
   const [what, m] = IS.drill.key.split('|');
-  const period = m === 'all' ? IS.d.year : `${IS.d.year}-${String(m).padStart(2, '0')}`;
+  const period = m === 'all' ? IS.d.year : `${IS.d.year}-${String(m).padStart(2, '0')}`; // 年份已由服务端校验为 4 位数字
   const p = new URLSearchParams({ period });
   let label = '';
   if (what.startsWith('c:')) { p.set('category_id', what.slice(2)); const c = IS.d.categories.find(x => x.id === +what.slice(2)); label = `${c.l1} · ${c.name}`; }
@@ -147,10 +147,10 @@ async function showISDrill() {
   const total = items.reduce((a, f) => a + (f.type === 'income' ? f.amount : f.amount), 0);
   const el = IS.root.querySelector('#drill');
   if (!el) return;
-  el.innerHTML = `<div style="padding-top:26px"><div class="sec"><b>下钻 · ${m === 'all' ? IS.d.year + ' 年' : `${+m} 月`} ${esc(label)} ${fmt(total)}</b><button type="button" class="lk" data-close>收起 ×</button></div>
+  el.innerHTML = `<div style="padding-top:26px"><div class="sec"><b>下钻 · ${m === 'all' ? IS.esc(d.year) + ' 年' : `${+m} 月`} ${esc(label)} ${fmt(total)}</b><button type="button" class="lk" data-close>收起 ×</button></div>
 <div class="dr mono mut" style="font-size:12px;border-bottom:2px solid #141414;grid-template-columns:80px 120px minmax(0,1fr) 110px"><span>日期</span><span>来源</span><span>商户 / 分类</span><span>金额</span></div>
 ${items.map(f => { const a = flowAmount(f); return `<div class="dr" style="grid-template-columns:80px 120px minmax(0,1fr) 110px"><span class="mono">${dDot(f.date).slice(5)}</span><span class="mut">${esc(f.source === 'sell' || f.source === 'fx' ? '交易自动生成' : SRC_NAME[f.source] || f.source)}</span><span>${esc(f.merchant)} <span class="mut" style="font-size:12px">${esc(f.l1 || '')} · ${esc(f.cat_name || '')}</span></span><span class="${a.cls}">${a.text}</span></div>`; }).join('') || '<div class="empty">没有流水</div>'}
-<div style="padding-top:8px"><a class="lk" href="#/bills/${m === 'all' ? IS.d.year + '-01' : period}">到账单页查看 →</a></div></div>`;
+<div style="padding-top:8px"><a class="lk" href="#/bills/${m === 'all' ? esc(IS.d.year) + '-01' : period}">到账单页查看 →</a></div></div>`;
   el.querySelector('[data-close]').addEventListener('click', () => { IS.drill = null; drawIS(); });
 }
 
@@ -159,7 +159,7 @@ let CF = { drill: null };
 
 async function renderCF(root) {
   const q = qs();
-  const d = await get(`/api/cf${q.year ? `?year=${q.year}` : ''}`);
+  const d = await get(`/api/cf${/^\d{4}$/.test(q.year || '') ? `?year=${q.year}` : ''}`);
   CF.root = root; CF.d = d;
   if (CF.year !== d.year) { CF.year = d.year; CF.drill = null; }
   drawCF();
@@ -188,7 +188,7 @@ function drawCF() {
   const d = CF.d, ms = d.months;
   const grid = `grid-template-columns:minmax(150px,1.6fr) repeat(${ms.length},minmax(64px,1fr)) minmax(84px,1.1fr)`;
   const c = (v, key, dp) => `<button type="button" class="cv ${v > 0 ? 'up' : v < 0 ? 'dn' : 'mut'}${CF.drill === key ? ' on' : ''}" data-drill="${key}">${sgn(v, dp)}</button>`;
-  const period = ms.length ? `${d.year} 年 1–${ms[ms.length - 1]} 月` : `${d.year} 年`;
+  const period = ms.length ? `${esc(d.year)} 年 1–${ms[ms.length - 1]} 月` : `${esc(d.year)} 年`;
   CF.root.innerHTML = `<div class="pg">${strip()}<div class="wrap">${reportHeader('cf', yearSel(d.years, d.year))}
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;padding:20px 0 14px">
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">现金流量表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">结余 ${fmt(d.total.balance, 0)}，其中 ${fmt(Math.max(d.total.inv, 0), 0)} 投向了投资</h1>
@@ -217,7 +217,7 @@ async function showCFDrill() {
   const res = await get(`/api/cf/drill?period=${period}&row=${row}`);
   const el = CF.root.querySelector('#drill');
   if (!el) return;
-  const when = m === 'all' ? `${CF.d.year} 年` : `${+m} 月`;
+  const when = m === 'all' ? `${esc(CF.d.year)} 年` : `${+m} 月`;
   if (row === 'inv') {
     const items = res.items;
     const total = items.reduce((a, t) => a + (t.inv || 0), 0);

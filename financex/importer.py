@@ -56,7 +56,8 @@ def preview(conn, files):
                 r["state"] = "duplicate"
             seen.add(key)
 
-    # 疑似重复：信用卡 vs 支付宝 / 微信，金额相同、日期差 ≤ 1 天
+    # 疑似重复：信用卡 vs 支付宝 / 微信，收支类型相同、金额相同、日期差 ≤ 1 天
+    # （收入和支出金额都存正数，不比类型会把报销收入和同额消费误配成一对）
     live = [r for r in rows if r["state"] == "ok" and r["type"] != "transfer"]
     cards = [r for r in live if r["source"] == "abc"]
     wallets = [r for r in live if r["source"] in ("alipay", "wechat")]
@@ -65,20 +66,21 @@ def preview(conn, files):
         for w in wallets:
             if w["id"] in used:
                 continue
-            if abs(w["amount"] - c["amount"]) < 0.005 and _days(w["date"], c["date"]) <= 1:
+            if w["type"] == c["type"] and abs(w["amount"] - c["amount"]) < 0.005 \
+                    and _days(w["date"], c["date"]) <= 1:
                 used.add(w["id"])
                 c["state"], w["state"] = "suspect_drop", "suspect_keep"
                 c["pair"], w["pair"] = w["id"], c["id"]
                 break
     db_wallet = db.rows(conn.execute(
-        "SELECT id, date, amount, source, merchant FROM flows WHERE type != 'transfer' "
+        "SELECT id, date, amount, type, source, merchant FROM flows WHERE type != 'transfer' "
         "AND source IN ('alipay','wechat','abc')"))
     for r in live:
         if r["state"] != "ok":
             continue
         other = ("alipay", "wechat") if r["source"] == "abc" else ("abc",)
         for f in db_wallet:
-            if f["source"] in other and abs(f["amount"] - r["amount"]) < 0.005 \
+            if f["source"] in other and f["type"] == r["type"] and abs(f["amount"] - r["amount"]) < 0.005 \
                     and _days(f["date"], r["date"]) <= 1:
                 if r["source"] == "abc":
                     r["state"] = "suspect_drop"

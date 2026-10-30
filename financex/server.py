@@ -14,6 +14,14 @@ from . import __version__, backup, config, db, importer, ledger, parsers, quotes
 ROUTES = []
 
 
+# 会回显到页面的查询参数，一律校验格式
+_QUERY_FORMATS = {
+    "year": re.compile(r"\d{4}"),
+    "month": re.compile(r"\d{4}-\d{2}"),
+    "period": re.compile(r"\d{4}(-\d{2})?"),
+}
+
+
 class ApiError(Exception):
     def __init__(self, msg, status=400):
         super().__init__(msg)
@@ -644,7 +652,31 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status, obj):
         self._send(status, json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8"))
 
+    def _forbidden_reason(self, method):
+        """拒绝其他网站发来的请求：只监听 127.0.0.1 挡不住浏览器里的恶意网页。"""
+        port = self.server.server_address[1]
+        allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if (self.headers.get("Host") or "").lower() not in allowed:  # 防 DNS 重绑定
+            return "Host 不被允许"
+        if method == "GET":
+            return None
+        origin = self.headers.get("Origin")
+        if origin is not None and origin.lower() not in {f"http://{h}" for h in allowed}:
+            return "跨站请求被拒绝"
+        if self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site"):
+            return "跨站请求被拒绝"
+        # 要求 JSON：跨站网页发 application/json 必须先预检，而本服务不响应预检
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if int(self.headers.get("Content-Length") or 0) and ctype != "application/json":
+            return "请求须为 JSON"
+        if method == "POST" and ctype != "application/json":
+            return "请求须为 JSON"
+        return None
+
     def _handle(self, method):
+        reason = self._forbidden_reason(method)
+        if reason:
+            return self._json(403, {"error": reason})
         url = urlparse(self.path)
         path = url.path
         if not path.startswith("/api/"):
@@ -652,6 +684,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(405, {"error": "method not allowed"})
             return self._static(path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        for k, rx in _QUERY_FORMATS.items():
+            if k in q and q[k] != "" and not rx.fullmatch(q[k]):
+                return self._json(400, {"error": f"参数 {k} 格式无效"})
         if path == "/api/export.csv":
             conn = db.connect()
             try:
