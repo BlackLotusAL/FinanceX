@@ -239,6 +239,18 @@ class Snapshot(unittest.TestCase):
         self.assertAlmostEqual(r["bal_before"], 1000)
         self.assertAlmostEqual(r["principal"], 3500)
 
+    def test_convert_twice_rejected(self):
+        conn = fresh()
+        m = account(conn, "某基金（手填）")
+        inv = account(conn, "券商", "investment")
+        body = {"manual_account_id": m, "code": "000001", "name": "某基金", "category": "fund",
+                "currency": "CNY", "account_id": inv, "date": "2026-09-01", "qty": 100, "amount": 1000}
+        server.inst_convert(conn, {}, dict(body))
+        with self.assertRaises(server.ApiError):
+            server.inst_convert(conn, {}, dict(body))
+        conn.rollback()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM instruments").fetchone()[0], 1)
+
     def test_oversell_rejected(self):
         conn = fresh()
         i = instrument(conn, "510300", "沪深300ETF", category="etf")

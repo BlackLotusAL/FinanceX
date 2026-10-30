@@ -237,7 +237,7 @@ function bind() {
     r.querySelector('[name="new-name"]').addEventListener('input', e => { n.name = e.target.value; });
     r.querySelector('[name="new-cur"]').addEventListener('change', e => { n.currency = e.target.value; });
     r.querySelector('[name="new-bal"]').addEventListener('input', e => { n.balance = e.target.value; });
-    r.querySelector('[data-act="add"]').addEventListener('click', async () => {
+    r.querySelector('[data-act="add"]').addEventListener('click', once('acc-add', async () => {
       if (!n.name.trim()) return toast('请填写账户名称', true);
       try {
         const res = await post('/api/accounts', { name: n.name.trim(), currency: n.currency, kind: 'manual' });
@@ -245,7 +245,7 @@ function bind() {
         S.newAcc = { name: '', currency: 'CNY', balance: '' };
         toast('已添加账户'); draw();
       } catch (e) { fail(e); }
-    });
+    }));
   }
   r.querySelectorAll('[data-menu]').forEach(b => b.addEventListener('click', e => {
     e.stopPropagation(); const id = +b.dataset.menu; S.menu = S.menu === id ? null : id; draw();

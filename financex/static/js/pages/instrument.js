@@ -1,4 +1,4 @@
-import { get, post, put, qs, state, backStrip, esc, today, parseNum, CAT_NAME, toast, fail, go } from '../util.js';
+import { get, post, put, qs, state, backStrip, esc, today, parseNum, CAT_NAME, toast, fail, go, once, busyAttr } from '../util.js';
 
 let S = null;
 
@@ -62,7 +62,7 @@ ${a.opening ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,mi
 <label class="fld">日期<input type="date" name="date" value="${a.date}"></label>
 <label class="fld">数量<input type="text" name="qty" inputmode="decimal" value="${esc(a.qty)}" style="text-align:right"></label>
 <label class="fld">总成本（${a.connect || a.currency === 'CNY' ? '¥' : a.currency}）<input type="text" name="amount" inputmode="decimal" value="${esc(a.amount)}" style="text-align:right"><span class="h">${a.category === 'crypto' ? '参照投资明细子表' : '参照券商 App'}</span></label></div>` : ''}</div>`}
-<div style="display:flex;gap:10px;border-top:3px solid #141414;padding-top:14px"><a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save-a">保存标的</button></div>
+<div style="display:flex;gap:10px;border-top:3px solid #141414;padding-top:14px"><a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save-a" data-once="inst-save-a"${busyAttr('inst-save-a')}>保存标的</button></div>
 </section>
 ${edit ? '' : `<section id="convert" style="flex:1 1 520px;min-width:0;display:flex;flex-direction:column;gap:20px;border-left:1px solid #141414;padding-left:40px" data-form="c">
 <div class="sec"><b>手填账户转为标的</b></div>
@@ -82,7 +82,7 @@ ${S.manual.length ? `<div style="display:grid;grid-template-columns:repeat(auto-
 <div class="kv"><span>${esc(S.manual.find(m => m.id === +c.manual_account_id)?.name || '')}（手填）</span><span class="mut">停用 · 历史快照保留</span></div>
 <div class="kv"><span>${esc(c.name || '新标的')}（标的）</span><span>期初买入 ${c.qty ? esc(c.qty) : '—'} 份</span></div>
 <div class="kv"><span>之后盘点</span><span>自动按${c.category === 'fund' ? '净值' : '最新价'}估值</span></div></div>
-<div style="display:flex;gap:10px;border-top:3px solid #141414;padding-top:14px"><a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save-c">转为标的</button></div>`
+<div style="display:flex;gap:10px;border-top:3px solid #141414;padding-top:14px"><a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save-c" data-once="inst-save-c"${busyAttr('inst-save-c')}>转为标的</button></div>`
     : '<div class="empty">目前没有可转换的手填账户。</div>'}
 </section>`}
 </div></div></div>`;
@@ -129,7 +129,7 @@ function bind() {
     } catch (e) { o.hint = '识别失败（需要联网）'; }
     draw();
   }));
-  r.querySelector('[data-act="save-a"]')?.addEventListener('click', async () => {
+  r.querySelector('[data-act="save-a"]')?.addEventListener('click', once('inst-save-a', async () => {
     const a = S.a;
     const body = payload(a);
     try {
@@ -145,8 +145,8 @@ function bind() {
       }
       toast('已保存标的'); go('#/holdings');
     } catch (e) { fail(e); }
-  });
-  r.querySelector('[data-act="save-c"]')?.addEventListener('click', async () => {
+  }));
+  r.querySelector('[data-act="save-c"]')?.addEventListener('click', once('inst-save-c', async () => {
     const c = S.c;
     const q = parseNum(c.qty), amt = parseNum(c.amount);
     if (!(q > 0) || !Number.isFinite(amt)) return toast('请填写期初数量与成本', true);
@@ -154,5 +154,5 @@ function bind() {
       await post('/api/instruments/convert', { ...payload(c), manual_account_id: +c.manual_account_id, date: c.date, qty: q, amount: amt });
       toast('已转为标的，原手填账户已停用'); go('#/holdings');
     } catch (e) { fail(e); }
-  });
+  }));
 }

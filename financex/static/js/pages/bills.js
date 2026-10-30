@@ -174,7 +174,8 @@ async function refresh() {
   draw();
 }
 
-async function bulk(action, extra = {}) {
+// 批量操作（含「复制到下月」）请求未完成前，重复点击直接忽略
+const bulk = once('flow-bulk', async (action, extra = {}) => {
   try {
     const res = await post('/api/flows/batch', { ids: [...S.sel], action, ...extra });
     if (action === 'copy_next') toast(`已复制 ${res.copied} 笔到下月`);
@@ -182,7 +183,7 @@ async function bulk(action, extra = {}) {
     if (action === 'delete') S.sel.clear();
     await refresh();
   } catch (e) { fail(e); }
-}
+});
 
 function bind() {
   const r = S.root;

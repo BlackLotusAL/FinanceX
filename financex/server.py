@@ -384,6 +384,8 @@ def inst_convert(conn, q, b):
     acc = db.one(conn.execute("SELECT * FROM accounts WHERE id=? AND kind='manual'", (b.get("manual_account_id"),)))
     if not acc:
         raise ApiError("请选择要转换的手填账户")
+    if acc["disabled"]:  # 已转换过（转换会停用原账户），防止重复转换
+        raise ApiError("这个手填账户已经停用，可能已经转换过了")
     b.setdefault("opening", {"date": b.get("date"), "qty": b.get("qty"), "amount": b.get("amount")})
     res = inst_create(conn, q, b)
     conn.execute("UPDATE accounts SET disabled=1 WHERE id=?", (acc["id"],))

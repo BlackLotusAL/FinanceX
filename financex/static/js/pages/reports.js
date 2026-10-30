@@ -142,12 +142,15 @@ async function showISDrill() {
   else if (what.startsWith('l1:')) { p.set('l1', what.slice(3)); label = what.slice(3); }
   else if (what.startsWith('t:')) { p.set('type', what.slice(2)); label = TYPE_NAME[what.slice(2)]; }
   else if (what === 'consume') { p.set('consume', '1'); label = '消费支出'; }
+  // 等待期间用户换了单元格或年份，就丢弃这次结果，不覆盖当前的下钻
+  const key = IS.drill.key, d0 = IS.d, root0 = IS.root;
   const res = await get(`/api/flows?${p}`);
+  if (IS.drill?.key !== key || IS.d !== d0 || IS.root !== root0) return;
   const items = res.items.filter(f => f.type !== 'transfer');
   const total = items.reduce((a, f) => a + (f.type === 'income' ? f.amount : f.amount), 0);
   const el = IS.root.querySelector('#drill');
   if (!el) return;
-  el.innerHTML = `<div style="padding-top:26px"><div class="sec"><b>下钻 · ${m === 'all' ? IS.esc(d.year) + ' 年' : `${+m} 月`} ${esc(label)} ${fmt(total)}</b><button type="button" class="lk" data-close>收起 ×</button></div>
+  el.innerHTML = `<div style="padding-top:26px"><div class="sec"><b>下钻 · ${m === 'all' ? esc(IS.d.year) + ' 年' : `${+m} 月`} ${esc(label)} ${fmt(total)}</b><button type="button" class="lk" data-close>收起 ×</button></div>
 <div class="dr mono mut" style="font-size:12px;border-bottom:2px solid #141414;grid-template-columns:80px 120px minmax(0,1fr) 110px"><span>日期</span><span>来源</span><span>商户 / 分类</span><span>金额</span></div>
 ${items.map(f => { const a = flowAmount(f); return `<div class="dr" style="grid-template-columns:80px 120px minmax(0,1fr) 110px"><span class="mono">${dDot(f.date).slice(5)}</span><span class="mut">${esc(f.source === 'sell' || f.source === 'fx' ? '交易自动生成' : SRC_NAME[f.source] || f.source)}</span><span>${esc(f.merchant)} <span class="mut" style="font-size:12px">${esc(f.l1 || '')} · ${esc(f.cat_name || '')}</span></span><span class="${a.cls}">${a.text}</span></div>`; }).join('') || '<div class="empty">没有流水</div>'}
 <div style="padding-top:8px"><a class="lk" href="#/bills/${m === 'all' ? esc(IS.d.year) + '-01' : period}">到账单页查看 →</a></div></div>`;
@@ -214,7 +217,9 @@ const KIND = { buy: '买入', sell: '卖出', fx_buy: '购汇', fx_sell: '结汇
 async function showCFDrill() {
   const [row, m] = CF.drill.split('|');
   const period = m === 'all' ? CF.d.year : `${CF.d.year}-${String(m).padStart(2, '0')}`;
+  const key = CF.drill, d0 = CF.d, root0 = CF.root;
   const res = await get(`/api/cf/drill?period=${period}&row=${row}`);
+  if (CF.drill !== key || CF.d !== d0 || CF.root !== root0) return;
   const el = CF.root.querySelector('#drill');
   if (!el) return;
   const when = m === 'all' ? `${esc(CF.d.year)} 年` : `${+m} 月`;

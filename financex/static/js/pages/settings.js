@@ -1,4 +1,4 @@
-import { get, post, put, del, state, loadMeta, backStrip, esc, toast, fail, confirmBox } from '../util.js';
+import { get, post, put, del, state, loadMeta, backStrip, esc, toast, fail, confirmBox, once } from '../util.js';
 
 let S = { all: false };
 
@@ -73,11 +73,11 @@ function bind() {
     try { await del(`/api/categories/${c.id}`); toast('已删除'); await reload(); } catch (e) { fail(e); }
   }));
   r.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => { S.adding = b.dataset.add; S.edit = null; draw(); r.querySelector('[data-new]').focus(); }));
-  const saveNew = async l1 => {
+  const saveNew = once('cat-add', async l1 => {
     const v = r.querySelector('[data-new]').value.trim();
     if (!v) { S.adding = null; draw(); return; }
     try { await post('/api/categories', { l1, name: v }); S.adding = null; toast('已添加'); await reload(); } catch (e) { fail(e); }
-  };
+  });
   r.querySelector('[data-addsave]')?.addEventListener('click', e => saveNew(e.currentTarget.dataset.addsave));
   r.querySelector('[data-new]')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveNew(e.target.dataset.new); if (e.key === 'Escape') { S.adding = null; draw(); } });
   r.querySelector('[data-act="all"]')?.addEventListener('click', () => { S.all = !S.all; draw(); });
