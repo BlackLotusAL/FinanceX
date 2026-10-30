@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS snap_balances (
   month TEXT NOT NULL,
   account_id INTEGER NOT NULL,
   balance REAL,
+  currency TEXT,                   -- 盘点时账户的币种（存档，不随账户修改）
   PRIMARY KEY (month, account_id)
 );
 
@@ -106,6 +107,8 @@ CREATE TABLE IF NOT EXISTS snap_positions (
   price REAL,
   cost REAL NOT NULL DEFAULT 0,    -- 盘点时的持仓成本（结算币种）
   price_note TEXT NOT NULL DEFAULT '',
+  currency TEXT,                   -- 盘点时标的的币种与港股通标记（存档）
+  connect INTEGER,
   PRIMARY KEY (month, instrument_id)
 );
 """
@@ -148,8 +151,30 @@ def connect(path=None):
     return conn
 
 
+_MIGRATIONS = [
+    ("snap_balances", "currency", "TEXT"),
+    ("snap_positions", "currency", "TEXT"),
+    ("snap_positions", "connect", "INTEGER"),
+]
+
+
+def archive_snapshot_meta(conn):
+    """给尚未存档币种的快照行补上当前币种，之后修改账户 / 标的不再影响它们。"""
+    conn.execute("UPDATE snap_balances SET currency=(SELECT currency FROM accounts a "
+                 "WHERE a.id=snap_balances.account_id) WHERE currency IS NULL")
+    conn.execute("UPDATE snap_positions SET "
+                 "currency=(SELECT currency FROM instruments i WHERE i.id=snap_positions.instrument_id), "
+                 "connect=(SELECT connect FROM instruments i WHERE i.id=snap_positions.instrument_id) "
+                 "WHERE currency IS NULL")
+
+
 def init(conn):
     conn.executescript(SCHEMA)
+    for table, col, typ in _MIGRATIONS:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+    archive_snapshot_meta(conn)
     if conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0] == 0:
         sort = 0
         for l1, subs in DEFAULT_CATEGORIES:

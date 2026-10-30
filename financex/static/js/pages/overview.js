@@ -58,22 +58,45 @@ ${ORDER.map(g => {
 </aside></main>`;
 }
 
-function niceMax(v) {
-  if (v <= 0) return 10000;
-  const steps = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 10];
-  const mag = 10 ** Math.floor(Math.log10(v / 4));
-  for (const s of steps) if (s * mag * 4 >= v) return s * mag * 4;
-  return 40 * mag;
+const STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 10];
+
+function niceStep(v) {
+  if (v <= 0) return 2500;
+  const mag = 10 ** Math.floor(Math.log10(v));
+  for (const s of STEPS) if (s * mag >= v) return s * mag;
+  return 10 * mag;
+}
+
+// 纵轴范围：正值（资产）向上堆叠，负值（负债超过资产的币种）向下堆叠
+function scale(series) {
+  let hi = 0, lo = 0;
+  for (const s of series) {
+    if (!s.groups) continue;
+    let pos = 0, neg = 0;
+    for (const g of ORDER) { const v = s.groups[g] || 0; if (v > 0) pos += v; else neg += v; }
+    hi = Math.max(hi, pos * 1.02); lo = Math.min(lo, neg * 1.02);
+  }
+  const step = niceStep((hi - lo) / 4);
+  const top = Math.max(step, Math.ceil(hi / step - 1e-9) * step);
+  const bottom = lo < 0 ? -Math.ceil(-lo / step - 1e-9) * step : 0;
+  return { top, bottom, step };
 }
 
 function chart(series) {
   const n = series.length;
-  const max = niceMax(Math.max(...series.map(s => s.net || 0)) * 1.02);
+  const { top, bottom, step } = scale(series);
   const W = 1000, H = 300;
   const x = i => (n === 1 ? W / 2 : (i * W) / (n - 1));
-  const y = v => H - (Math.max(v, 0) / max) * H;
+  const y = v => H - ((v - bottom) / (top - bottom)) * H;
+  const ticks = [];
+  for (let v = bottom; v <= top + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
   let svg = '';
-  for (let k = 1; k < 4; k++) svg += `<line x1="0" y1="${H * k / 4}" x2="${W}" y2="${H * k / 4}" stroke="#8A877F" stroke-width="1" stroke-dasharray="1 3" vector-effect="non-scaling-stroke"></line>`;
+  for (const v of ticks) {
+    if (v === bottom || v === top) continue;
+    svg += v === 0
+      ? `<line x1="0" y1="${y(0).toFixed(1)}" x2="${W}" y2="${y(0).toFixed(1)}" stroke="#141414" stroke-width="1" vector-effect="non-scaling-stroke"></line>`
+      : `<line x1="0" y1="${y(v).toFixed(1)}" x2="${W}" y2="${y(v).toFixed(1)}" stroke="#8A877F" stroke-width="1" stroke-dasharray="1 3" vector-effect="non-scaling-stroke"></line>`;
+  }
   // 按连续有数据的月份分段
   const segs = [];
   let cur = [];
@@ -83,18 +106,27 @@ function chart(series) {
   series.forEach((s, i) => { if (!s.groups) gaps.push(i); });
   for (const seg of segs) {
     const pts = seg.length === 1 ? [{ i: seg[0], dx: -6 }, { i: seg[0], dx: 6 }] : seg.map(i => ({ i, dx: 0 }));
-    let lower = pts.map(() => 0);
+    const px = p => (x(p.i) + p.dx).toFixed(1);
+    let upPos = pts.map(() => 0), upNeg = pts.map(() => 0);
     for (const g of ORDER) {
-      const upper = pts.map((p, k) => lower[k] + Math.max(series[p.i].groups[g] || 0, 0));
-      const top = pts.map((p, k) => `${(x(p.i) + p.dx).toFixed(1)},${y(upper[k]).toFixed(1)}`);
-      const bot = pts.map((p, k) => `${(x(p.i) + p.dx).toFixed(1)},${y(lower[k]).toFixed(1)}`).reverse();
-      svg += `<polygon points="${[...top, ...bot].join(' ')}" fill="${GROUP_COLOR[g]}"></polygon>`;
-      lower = upper;
+      const vals = pts.map(p => series[p.i].groups[g] || 0);
+      for (const sign of [1, -1]) {
+        const base = sign > 0 ? upPos : upNeg;
+        const next = base.map((b, k) => b + ((sign > 0 ? vals[k] > 0 : vals[k] < 0) ? vals[k] : 0));
+        if (next.some((v, k) => v !== base[k])) {
+          const t = pts.map((p, k) => `${px(p)},${y(next[k]).toFixed(1)}`);
+          const bt = pts.map((p, k) => `${px(p)},${y(base[k]).toFixed(1)}`).reverse();
+          svg += `<polygon points="${[...t, ...bt].join(' ')}" fill="${GROUP_COLOR[g]}"${sign < 0 ? ' fill-opacity="0.55"' : ''}></polygon>`;
+        }
+        if (sign > 0) upPos = next; else upNeg = next;
+      }
     }
-    svg += `<polyline points="${pts.map((p, k) => `${(x(p.i) + p.dx).toFixed(1)},${y(lower[k]).toFixed(1)}`).join(' ')}" fill="none" stroke="#141414" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>`;
+    // 粗线是净资产 = 资产堆叠 + 负值堆叠
+    svg += `<polyline points="${pts.map((p, k) => `${px(p)},${y(upPos[k] + upNeg[k]).toFixed(1)}`).join(' ')}" fill="none" stroke="#141414" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>`;
   }
   svg += `<line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" stroke="#141414" stroke-width="2" vector-effect="non-scaling-stroke"></line>`;
-  const yl = [1, 2, 3, 4].map(k => `<span class="mut mono" style="position:absolute;right:0;top:calc(${100 - k * 25}% - 9px);font-size:12px">${fmt(max * k / 4 / 10000, max >= 400000 ? 0 : 1)} 万</span>`).join('');
+  const big = Math.max(top, -bottom) >= 400000;
+  const yl = ticks.filter(v => v !== bottom || bottom < 0).map(v => `<span class="mut mono" style="position:absolute;right:0;top:calc(${(100 * (top - v) / (top - bottom)).toFixed(2)}% - 9px);font-size:12px">${v < 0 ? '−' : ''}${fmt(Math.abs(v) / 10000, big ? 0 : 1)} 万</span>`).join('');
   // 缺月标签：每段连续缺月标一次
   const gapGroups = [];
   gaps.forEach(i => { const last = gapGroups[gapGroups.length - 1]; if (last && last[last.length - 1] === i - 1) last.push(i); else gapGroups.push([i]); });

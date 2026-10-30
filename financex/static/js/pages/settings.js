@@ -24,7 +24,8 @@ function chips(l1) {
 
 function draw() {
   const cats = state.meta.categories;
-  const l1s = kind => [...new Set(cats.filter(c => c.kind === kind).map(c => c.l1))];
+  // 一级分类是固定的，即使下面的二级全删了也要显示，才能再加回二级
+  const l1s = kind => [...new Set([...(state.meta.l1?.[kind] || []), ...cats.filter(c => c.kind === kind).map(c => c.l1)])];
   const subCount = cats.length;
   const bk = S.backups.items;
   const list = S.all ? bk : bk.slice(0, 6);

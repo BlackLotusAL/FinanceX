@@ -49,7 +49,8 @@ def snapshot_detail(conn, month):
     groups = {g: {"currency": g, "items": [], "total": 0.0} for g in GROUPS}
     missing = 0
     for b in conn.execute(
-            "SELECT b.*, a.name, a.currency, a.note, a.disabled FROM snap_balances b "
+            "SELECT b.month, b.account_id, b.balance, COALESCE(b.currency, a.currency) AS currency, "
+            "a.name, a.note, a.disabled FROM snap_balances b "
             "JOIN accounts a ON a.id=b.account_id WHERE b.month=? ORDER BY a.sort, a.id", (month,)):
         r = rate_of(b["currency"], rates)
         val = b["balance"]
@@ -61,7 +62,9 @@ def snapshot_detail(conn, month):
             "currency": b["currency"], "value": val, "cny": cny})
         groups[b["currency"]]["total"] += cny or 0
     for p in conn.execute(
-            "SELECT p.*, i.code, i.name, i.currency, i.connect, i.category, a.name AS account_name "
+            "SELECT p.month, p.instrument_id, p.qty, p.price, p.cost, p.price_note, "
+            "COALESCE(p.currency, i.currency) AS currency, COALESCE(p.connect, i.connect) AS connect, "
+            "i.code, i.name, i.category, a.name AS account_name "
             "FROM snap_positions p JOIN instruments i ON i.id=p.instrument_id "
             "JOIN accounts a ON a.id=i.account_id WHERE p.month=? ORDER BY a.id, i.id", (month,)):
         inst = dict(p)
@@ -220,6 +223,7 @@ def save_stocktake(conn, data, backup_fn):
                 "INSERT INTO snap_positions(month,instrument_id,qty,price,cost,price_note) VALUES (?,?,?,?,?,?)",
                 (month, p["instrument_id"], float(p["qty"]), None if v in (None, "") else float(v),
                  float(p.get("cost") or 0), p.get("price_note", "")))
+        db.archive_snapshot_meta(conn)
         conn.commit()
     return {"month": month, "overwritten": bool(exists)}
 
@@ -258,8 +262,9 @@ def holdings(conn):
     actual = {}
     if latest:
         for r in conn.execute(
-                "SELECT a.currency, SUM(b.balance) FROM snap_balances b JOIN accounts a ON a.id=b.account_id "
-                "WHERE b.month=? AND a.currency IN ('HKD','USD') GROUP BY a.currency", (latest[0],)):
+                "SELECT COALESCE(b.currency, a.currency) AS cur, SUM(b.balance) FROM snap_balances b "
+                "JOIN accounts a ON a.id=b.account_id WHERE b.month=? "
+                "AND COALESCE(b.currency, a.currency) IN ('HKD','USD') GROUP BY cur", (latest[0],)):
             actual[r[0]] = r[1]
     manual = db.rows(conn.execute(
         "SELECT * FROM accounts WHERE kind='manual' AND disabled=0 ORDER BY sort, id"))

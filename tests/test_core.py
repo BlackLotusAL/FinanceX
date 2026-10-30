@@ -185,6 +185,38 @@ class Snapshot(unittest.TestCase):
         self.assertEqual(st["positions"][0]["qty"], 100)
 
 
+    def test_snapshot_keeps_archived_currency(self):
+        conn = fresh()
+        usd = account(conn, "美元户", currency="USD")
+        reports.save_stocktake(conn, {
+            "month": "2026-09", "date": "2026-09-30", "rates": {"USD": 7, "HKD": 0.9},
+            "balances": [{"account_id": usd, "balance": 100}], "positions": []}, lambda k: None)
+        server.account_update(conn, {}, {"currency": "CNY"}, str(usd))
+        self.assertAlmostEqual(reports.snapshot_detail(conn, "2026-09")["net"], 700)
+
+    def test_oversell_rejected(self):
+        conn = fresh()
+        i = instrument(conn, "510300", "沪深300ETF", category="etf")
+        b = trade(conn, "buy", "2026-01-05", 100, 1000, inst=i)
+        with self.assertRaises(server.ApiError):
+            trade(conn, "sell", "2026-02-05", 150, 1800, inst=i)
+        conn.rollback()
+        trade(conn, "sell", "2026-02-05", 100, 1200, inst=i)
+        with self.assertRaises(server.ApiError):  # 删掉买入会让之后的卖出超卖
+            server.trade_delete(conn, {}, {}, str(b))
+        conn.rollback()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM trades").fetchone()[0], 2)
+
+    def test_instrument_moves_to_new_account(self):
+        conn = fresh()
+        i = instrument(conn, "510300", "沪深300ETF", category="etf")
+        old = conn.execute("SELECT account_id FROM instruments WHERE id=?", (i,)).fetchone()[0]
+        server.inst_update(conn, {}, {"new_account": {"name": "新券商"}}, str(i))
+        aid = conn.execute("SELECT account_id FROM instruments WHERE id=?", (i,)).fetchone()[0]
+        self.assertNotEqual(aid, old)
+        self.assertEqual(conn.execute("SELECT name FROM accounts WHERE id=?", (aid,)).fetchone()[0], "新券商")
+
+
 class Parsers(unittest.TestCase):
     def test_alipay(self):
         csv_text = (
@@ -242,6 +274,20 @@ class Parsers(unittest.TestCase):
         self.assertEqual(rows[3]["amount"], -129.0)
         again = parsers.parse_abc(b"", lines=lines)
         self.assertEqual([r["order_no"] for r in rows], [r["order_no"] for r in again])
+
+
+class AbcSign(unittest.TestCase):
+    def test_abc_refunds_do_not_flip_sign(self):
+        lines = [
+            "中国农业银行信用卡对账单 账单日 2026年10月03日",
+            "260929 260930 1234 消费 某商店 -100.00/CNY -100.00/CNY",
+            "260920 260921 1234 退货 某电商 20.00/CNY 20.00/CNY",
+            "260921 260922 1234 退款 某电商 30.00/CNY 30.00/CNY",
+        ]
+        rows = parsers.parse_abc(b"", lines=lines)
+        self.assertEqual([r["amount"] for r in rows], [100.0, -20.0, -30.0])
+        hdr = ["账单日 2026年10月03日 入账金额(支出为-)"] + lines[1:]
+        self.assertEqual([r["amount"] for r in parsers.parse_abc(b"", lines=hdr)], [100.0, -20.0, -30.0])
 
 
 class Import(unittest.TestCase):

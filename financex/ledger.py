@@ -65,6 +65,8 @@ def replay(conn, until=None):
                 if cny_book and not t["opening"]:
                     res["inv"] = t["amount"]
             else:
+                if t["qty"] > p["qty"] * (1 + 1e-9) + 1e-6:
+                    res["oversold"] = p["qty"]
                 cost_sold = t["qty"] * p["avg"]
                 realized = t["amount"] - cost_sold
                 p["qty"] -= t["qty"]
@@ -100,6 +102,15 @@ def replay(conn, until=None):
             f["trades"].append({**t, **res})
         results[t["id"]] = res
     return insts, pos, dict(fx), results
+
+
+def oversold(conn):
+    """按日期重放，返回第一笔卖出数量超过当时持仓的交易；没有则返回 None。"""
+    insts, pos, _, _ = replay(conn)
+    bad = [{**t, "name": insts[iid]["name"]} for iid, p in pos.items()
+           for t in p["trades"] if t.get("oversold") is not None]
+    bad.sort(key=lambda t: (t["date"], t["id"]))
+    return bad[0] if bad else None
 
 
 def regenerate_auto_flows(conn):

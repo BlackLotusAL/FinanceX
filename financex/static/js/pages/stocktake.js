@@ -145,10 +145,23 @@ function posPanel() {
 
 const SRC_FAIL = { fund: '天天基金未返回', crypto: 'OKX 未返回' };
 
+// 取价请求返回时，如果用户已经离开这次盘点（换了页面或月份），就丢弃结果，不再重绘
+function stillHere(st) {
+  return S === st && /^#\/stocktake(\?|$)/.test(location.hash);
+}
+
 async function fetchPrices() {
+  const st = S;
   S.fetching = true; draw();
+  let res;
   try {
-    const res = await post('/api/stocktake/prices', { instrument_ids: S.pos.map(p => p.instrument_id) });
+    res = await post('/api/stocktake/prices', { instrument_ids: S.pos.map(p => p.instrument_id) });
+  } catch (e) {
+    if (!stillHere(st)) return;
+    fail(e); S.fetching = false; draw(); return;
+  }
+  if (!stillHere(st)) return;
+  try {
     if (res.rates) {
       S.rates.USD = String(res.rates.USD); S.rates.HKD = String(res.rates.HKD);
       S.rateNote = `${res.rates.time} 取自 open.er-api.com`;
@@ -208,7 +221,10 @@ function bind() {
       await put(`/api/accounts/${b.dataset.enable}`, { disabled: 0 });
       const a = S.d.disabled.find(x => x.id === +b.dataset.enable);
       S.d.disabled = S.d.disabled.filter(x => x !== a);
-      S.acc.push({ ...a, disabled: 0, prev: null, input: '' });
+      // 存档快照里已有这个账户（保留了余额）时就地启用，不再追加一行
+      const existing = S.acc.find(x => x.id === a.id);
+      if (existing) existing.disabled = 0;
+      else S.acc.push({ ...a, disabled: 0, prev: null, input: '' });
       draw();
     } catch (e) { fail(e); }
   }));

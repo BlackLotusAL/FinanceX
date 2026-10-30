@@ -57,6 +57,7 @@ def meta(conn, q, body):
         "version": __version__, "today": Date.today().isoformat(),
         "db": str(config.DB_PATH),
         "categories": ledger.categories(conn),
+        "l1": {"income": db.INCOME_L1, "expense": db.EXPENSE_L1},
         "accounts": db.rows(conn.execute("SELECT * FROM accounts ORDER BY sort, id")),
         "instruments": list(ledger.instruments(conn).values()),
     }
@@ -356,7 +357,10 @@ def inst_update(conn, q, b, iid):
     merged = {**i, **b}
     _check_inst(merged)
     with db.lock():
-        aid = _resolve_account(conn, merged) if (b.get("account_id") or b.get("new_account")) else i["account_id"]
+        if b.get("account_id") or b.get("new_account"):
+            aid = _resolve_account(conn, {"account_id": b.get("account_id"), "new_account": b.get("new_account")})
+        else:
+            aid = i["account_id"]
         conn.execute(
             "UPDATE instruments SET code=?, name=?, category=?, currency=?, connect=?, account_id=?, disabled=? WHERE id=?",
             (merged["code"].strip(), merged["name"].strip(), merged["category"], merged["currency"],
@@ -423,6 +427,13 @@ def _write_trade(conn, vals, tid=None):
     return c.lastrowid
 
 
+def _check_oversell(conn):
+    bad = ledger.oversold(conn)
+    if bad:
+        raise ApiError(f"{bad['date']} 卖出「{bad['name']}」{bad['qty']:g}，超过当时的持仓 "
+                       f"{bad['oversold']:g}。请先补录或修改之前的买入。")
+
+
 @route("POST", "/api/trades/preview")
 def trade_preview(conn, q, b):
     """在事务里试算，返回这笔交易前后的持仓与盈亏，然后回滚。"""
@@ -455,6 +466,7 @@ def trade_create(conn, q, b):
     vals = _trade_values(b)
     with db.lock():
         tid = _write_trade(conn, vals)
+        _check_oversell(conn)
         ledger.regenerate_auto_flows(conn)
         conn.commit()
     return {"id": tid}
@@ -465,6 +477,7 @@ def trade_update(conn, q, b, tid):
     vals = _trade_values(b)
     with db.lock():
         _write_trade(conn, vals, int(tid))
+        _check_oversell(conn)
         ledger.regenerate_auto_flows(conn)
         conn.commit()
     return {"ok": True}
@@ -474,6 +487,7 @@ def trade_update(conn, q, b, tid):
 def trade_delete(conn, q, b, tid):
     with db.lock():
         conn.execute("DELETE FROM trades WHERE id=?", (tid,))
+        _check_oversell(conn)
         ledger.regenerate_auto_flows(conn)
         conn.commit()
     return {"ok": True}

@@ -312,9 +312,15 @@ def parse_abc(data, lines=None):
     if not matched:
         raise ParseError("没有在 PDF 里识别到交易行。请确认是农行信用卡电子对账单。")
 
-    # 农行对账单「支出为 -」；若多数消费为正数，则按「支出为正」处理
-    non_repay = [a for mm, _, a in matched if "还款" not in mm.group("body")]
-    spend_negative = sum(1 for a in non_repay if a < 0) >= sum(1 for a in non_repay if a > 0)
+    # 农行对账单「支出为 -」。表头写明了符号约定就照办；否则用消费行（排除还款与退款）的多数符号推断
+    # 只认「支出为 -」「存入以“+”表示」这类说明，不会误匹配「消费 美团 -12.00」这样的交易行
+    conv = re.search(r"(支出|消费|存入|还款|收入)(?:金额)?\s*(?:为|以|用)\s*[“\"「（(]?\s*(-|－|负|\+|＋|正)", text)
+    if conv:
+        negative_sign = conv.group(2) in ("-", "－", "负")
+        spend_negative = negative_sign if conv.group(1) in ("支出", "消费") else not negative_sign
+    else:
+        spends = [a for mm, _, a in matched if not re.search(r"(还款|退货|退款)", mm.group("body"))]
+        spend_negative = sum(1 for a in spends if a < 0) >= sum(1 for a in spends if a > 0)
 
     out, seen = [], {}
     for mm, line, amt in matched:
