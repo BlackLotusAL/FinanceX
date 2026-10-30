@@ -348,6 +348,10 @@ def inst_create(conn, q, b):
         iid = c.lastrowid
         op = b.get("opening")
         if op:
+            if _num(op["qty"], "数量") <= 0:
+                raise ApiError("期初数量应大于 0")
+            if _num(op["amount"]) < 0:
+                raise ApiError("期初成本不能为负数")
             conn.execute(
                 "INSERT INTO trades(date,kind,instrument_id,qty,amount,opening,created) VALUES (?,?,?,?,?,1,?)",
                 (_date(op.get("date") or Date.today().isoformat()), "buy", iid, _num(op["qty"], "数量"),
@@ -415,6 +419,8 @@ def _trade_values(b):
             "instrument_id": None, "currency": None, "note": b.get("note", "")}
     if vals["qty"] <= 0:
         raise ApiError("数量应大于 0")
+    if vals["amount"] < 0:  # 负的买入成本 / 卖出所得会让成本与投资净投入算错
+        raise ApiError("金额不能为负数")
     if kind in ("buy", "sell"):
         if not b.get("instrument_id"):
             raise ApiError("请选择标的")

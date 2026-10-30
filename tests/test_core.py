@@ -251,6 +251,20 @@ class Snapshot(unittest.TestCase):
         conn.rollback()
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM instruments").fetchone()[0], 1)
 
+    def test_negative_trade_amount_rejected(self):
+        conn = fresh()
+        with self.assertRaises(server.ApiError):
+            trade(conn, "fx_buy", "2026-01-05", 100, -700, currency="USD")
+        conn.rollback()
+        inv = account(conn, "券商", "investment")
+        with self.assertRaises(server.ApiError):
+            server.inst_create(conn, {}, {"code": "510300", "name": "沪深300ETF", "category": "etf",
+                                          "currency": "CNY", "account_id": inv,
+                                          "opening": {"date": "2026-01-05", "qty": 100, "amount": -400}})
+        conn.rollback()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM trades").fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM instruments").fetchone()[0], 0)
+
     def test_oversell_rejected(self):
         conn = fresh()
         i = instrument(conn, "510300", "沪深300ETF", category="etf")
