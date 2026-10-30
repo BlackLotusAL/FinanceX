@@ -1,0 +1,2 @@
+# 其余功能只用 Python 标准库；pdfplumber 仅用于解析农行信用卡 PDF 对账单
+pdfplumber>=0.10
