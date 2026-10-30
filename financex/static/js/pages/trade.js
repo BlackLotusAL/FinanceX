@@ -103,14 +103,17 @@ function dock() {
 <a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save" data-once="trade-save"${busyAttr('trade-save')} style="padding:0 30px">保存交易</button></div>`;
 }
 
-let timer;
+let timer, gen = 0;
+// 每次输入变化都作废之前的试算请求；乱序返回的旧结果直接丢弃
 function preview() {
   clearTimeout(timer);
+  const my = ++gen, st = S;
   timer = setTimeout(async () => {
     const body = payload();
     if (!body.instrument_id) return;
     try {
       const pv = await post('/api/trades/preview', { ...body, qty: body.qty > 0 ? body.qty : 1e-12, amount: Number.isFinite(body.amount) ? body.amount : 0 });
+      if (my !== gen || st !== S) return;
       if (!(body.qty > 0) || !Number.isFinite(body.amount)) pv.result = null, pv.after = null;
       S.pv = pv;
       const focus = document.activeElement?.name;

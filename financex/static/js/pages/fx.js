@@ -82,14 +82,17 @@ function payload() {
   return { id: S.id, kind: f.kind, currency: f.currency, date: f.date, qty: parseNum(f.qty), amount: parseNum(f.amount), opening: f.kind === 'fx_buy' && f.opening };
 }
 
-let timer;
+let timer, gen = 0;
+// 每次输入变化都作废之前的试算请求；乱序返回的旧结果直接丢弃
 function preview() {
   clearTimeout(timer);
+  const my = ++gen, st = S;
   timer = setTimeout(async () => {
     const b = payload();
     const ok = b.qty > 0 && Number.isFinite(b.amount);
     try {
       const pv = await post('/api/trades/preview', { ...b, qty: ok ? b.qty : 1, amount: ok ? b.amount : 0 });
+      if (my !== gen || st !== S) return;
       if (!ok) { pv.result = null; pv.after = pv.before; }
       S.pv = pv;
       const focus = document.activeElement?.name, pos = document.activeElement?.selectionStart;
