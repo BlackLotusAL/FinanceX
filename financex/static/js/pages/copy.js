@@ -1,4 +1,4 @@
-import { get, post, strip, stripDate, ghost, esc, fmt, sgn, dShort, today, mShort, parseNum, toast, fail, go } from '../util.js';
+import { get, post, strip, stripDate, ghost, esc, fmt, sgn, dShort, today, mShort, parseNum, toast, fail, go, once, busyAttr } from '../util.js';
 
 const DEFAULT_L1 = ['工资收入', '工资减扣', '住房物业', '数字订阅'];
 let S = null;
@@ -70,7 +70,7 @@ ${rows.map(f => {
 <span class="mut" style="font-size:12px"><span style="display:inline-block;width:18px;border-bottom:2px solid #24399A;vertical-align:middle"></span> 蓝色下划线 = 已改过金额</span>`
     : `<div class="empty">${mShort(S.src)}没有可复制的流水。</div>`}
 <div class="foot"><span style="font-size:13px">已选 <b>${picked.length}</b> 笔：收入 <b class="up">${sgn(inc)}</b>，支出 <b class="dn">${sgn(-exp)}</b></span>
-<div style="display:flex;gap:10px"><a href="#/bills/${S.month}" class="btn">取消</a><button type="button" class="btn pri" data-act="go"${picked.length ? '' : ' disabled'}>复制 ${picked.length} 笔到 ${mShort(S.month)}</button></div></div>
+<div style="display:flex;gap:10px"><a href="#/bills/${S.month}" class="btn">取消</a><button type="button" class="btn pri" data-act="go" data-once="copy-go"${picked.length ? busyAttr('copy-go') : ' disabled'}>复制 ${picked.length} 笔到 ${mShort(S.month)}</button></div></div>
 </aside></div></div>`;
   bind();
 }
@@ -95,12 +95,12 @@ function bind() {
       S.amt[f.id] = v; S.sel.add(f.id); draw();
     });
   });
-  r.querySelector('[data-act="go"]')?.addEventListener('click', async () => {
+  r.querySelector('[data-act="go"]')?.addEventListener('click', once('copy-go', async () => {
     const items = S.items.filter(f => S.sel.has(f.id)).map(f => ({ id: f.id, amount: amountOf(f) }));
     try {
       const res = await post('/api/copy', { month: S.month, items });
       toast(`已复制 ${res.copied} 笔`);
       go(`#/bills/${S.month}`);
     } catch (e) { fail(e); }
-  });
+  }));
 }

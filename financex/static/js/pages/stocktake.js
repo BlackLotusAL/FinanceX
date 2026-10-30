@@ -11,7 +11,7 @@ export async function render(root) {
   const d = await get(`/api/stocktake${q.month ? `?month=${q.month}` : ''}`);
   const snap = d.snapshot;
   S = {
-    root, d, month: d.month, menu: null, adding: false, showDisabled: false, fetching: false,
+    root, d, month: d.month, menu: null, rateEdited: {}, adding: false, showDisabled: false, fetching: false,
     date: snap ? snap.date : today(),
     rates: { USD: snap?.rates.USD ?? '', HKD: snap?.rates.HKD ?? '' },
     rateNote: snap?.rate_note || '',
@@ -152,6 +152,9 @@ function stillHere(st) {
 
 async function fetchPrices() {
   const st = S;
+  // 记下请求发出后用户手动改过的格，返回时保留这些格
+  S.rateEdited = {};
+  S.pos.forEach(p => { p.edited = false; });
   S.fetching = true; draw();
   let res;
   try {
@@ -163,11 +166,12 @@ async function fetchPrices() {
   if (!stillHere(st)) return;
   try {
     if (res.rates) {
-      S.rates.USD = String(res.rates.USD); S.rates.HKD = String(res.rates.HKD);
-      S.rateNote = `${res.rates.time} 取自 open.er-api.com`;
+      for (const k of ['USD', 'HKD']) if (!S.rateEdited[k]) S.rates[k] = String(res.rates[k]);
+      S.rateNote = S.rateEdited.USD || S.rateEdited.HKD ? '手填' : `${res.rates.time} 取自 open.er-api.com`;
     } else toast('汇率没有取到，请手填', true);
     let miss = 0;
     for (const p of S.pos) {
+      if (p.edited) continue;
       const r = res.prices[p.instrument_id];
       if (r) { p.input = String(r.price); p.note = r.time || r.source; } else { miss++; p.note = '!' + (SRC_FAIL[p.category] || '东方财富未返回'); }
     }
@@ -199,13 +203,13 @@ function bind() {
   const r = S.root;
   r.querySelector('[name="month"]').addEventListener('change', e => go(`#/stocktake?month=${e.target.value}`));
   r.querySelector('[name="date"]').addEventListener('change', e => { S.date = e.target.value; });
-  for (const k of ['USD', 'HKD']) r.querySelector(`[name="rate-${k}"]`).addEventListener('input', e => { S.rates[k] = e.target.value; live(); });
+  for (const k of ['USD', 'HKD']) r.querySelector(`[name="rate-${k}"]`).addEventListener('input', e => { S.rates[k] = e.target.value; S.rateEdited[k] = true; live(); });
   r.querySelectorAll('[data-bal]').forEach(el => el.addEventListener('input', () => {
     S.acc.find(a => a.id === +el.dataset.bal).input = el.value; el.classList.toggle('todo', el.value === ''); live();
   }));
   r.querySelectorAll('[data-price]').forEach(el => el.addEventListener('input', () => {
     const p = S.pos.find(x => x.instrument_id === +el.dataset.price);
-    p.input = el.value; if (!p.note || p.note.startsWith('!')) p.note = '手填'; el.classList.toggle('todo', el.value === ''); live();
+    p.input = el.value; p.edited = true; if (!p.note || p.note.startsWith('!')) p.note = '手填'; el.classList.toggle('todo', el.value === ''); live();
   }));
   r.querySelector('[data-act="fetch"]').addEventListener('click', fetchPrices);
   r.querySelector('[data-act="copy-prev"]').addEventListener('click', () => {

@@ -30,9 +30,8 @@ def default_stock_month(today=None):
 def rate_of(cur, rates):
     if cur == "CNY":
         return 1.0
-    if cur in ("CRYPTO", "USDT"):
-        return rates.get("USD")
-    return rates.get(cur)
+    r = rates.get("USD") if cur in ("CRYPTO", "USDT") else rates.get(cur)
+    return r if r and r > 0 else None
 
 
 # ---------- 快照 ----------
@@ -211,6 +210,7 @@ def save_stocktake(conn, data, backup_fn):
         ts = db.now()
         rates = {k: float(v) for k, v in (data.get("rates") or {}).items()
                  if k in ("USD", "HKD") and v not in (None, "")}
+        rates = {k: v for k, v in rates.items() if v > 0}  # 非正汇率按未填处理，与编辑器一致
         # 覆盖已有快照时，原有账户 / 标的沿用存档的币种，不被之后改过的元数据替换
         kept_bal = {r[0]: r[1] for r in conn.execute(
             "SELECT account_id, currency FROM snap_balances WHERE month=?", (month,))}

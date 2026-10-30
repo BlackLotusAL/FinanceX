@@ -194,6 +194,17 @@ class Snapshot(unittest.TestCase):
         server.account_update(conn, {}, {"currency": "CNY"}, str(usd))
         self.assertAlmostEqual(reports.snapshot_detail(conn, "2026-09")["net"], 700)
 
+    def test_nonpositive_rate_treated_as_missing(self):
+        conn = fresh()
+        usd = account(conn, "美元户", currency="USD")
+        reports.save_stocktake(conn, {
+            "month": "2026-09", "date": "2026-09-30", "rates": {"USD": -7, "HKD": 0},
+            "balances": [{"account_id": usd, "balance": 100}], "positions": []}, lambda k: None)
+        d = reports.snapshot_detail(conn, "2026-09")
+        self.assertEqual(d["rates"], {})
+        self.assertEqual(d["net"], 0)
+        self.assertEqual(d["missing"], 1)
+
     def test_connect_pnl_empty_without_rate(self):
         conn = fresh()
         i = instrument(conn, "00700", "腾讯控股", currency="HKD", connect=True)

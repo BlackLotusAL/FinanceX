@@ -88,7 +88,7 @@ function row(f) {
 
 function editor(f) {
   const typ = f ? f.type : 'expense';
-  const amt = f ? (f.type === 'income' ? sgn(f.amount) : f.type === 'transfer' ? fmt(f.amount) : sgn(-f.amount)) : '';
+  const amt = f ? amountText(f.type, f.amount) : '';
   return `<div class="tx edit" data-editor="${f ? f.id : 'new'}"><span></span>
 <input class="f" type="date" name="date" value="${f ? f.date : (S.month === today().slice(0, 7) ? today() : S.month + '-01')}" aria-label="日期" style="font-size:12px">
 <span style="display:flex;flex-direction:column;gap:2px"><input class="f" type="text" name="merchant" value="${esc(f?.merchant || '')}" placeholder="商户" aria-label="商户"><input class="f" type="text" name="description" value="${esc(f?.description || '')}" placeholder="商品说明" aria-label="商品说明" style="height:28px;font-size:12px"></span>
@@ -130,16 +130,25 @@ function summaryPanel() {
   return html + '<div style="border-top:2px solid #141414;margin-top:10px"></div>';
 }
 
+// 编辑框里的金额按类型显示：支出为 −、退款为 +，收入按原符号，转账不带符号
+function amountText(type, stored) {
+  return type === 'income' ? sgn(stored) : type === 'transfer' ? fmt(stored) : sgn(-stored);
+}
+
+function storedAmount(type, raw) {
+  raw = raw.trim();
+  const num = parseNum(raw);
+  if (num === null || Number.isNaN(num)) return null;
+  if (type === 'expense') return raw.startsWith('+') ? -Math.abs(num) : Math.abs(num);
+  if (type === 'transfer') return Math.abs(num);
+  return num;
+}
+
 function readEditor(box) {
   const v = n => box.querySelector(`[name="${n}"]`)?.value ?? '';
   const type = v('type');
-  const raw = v('amount').trim();
-  const num = parseNum(raw);
-  if (num === null || Number.isNaN(num)) throw new Error('请填写有效金额');
-  let amount;
-  if (type === 'expense') amount = raw.startsWith('+') ? -Math.abs(num) : Math.abs(num);
-  else if (type === 'transfer') amount = Math.abs(num);
-  else amount = num;
+  const amount = storedAmount(type, v('amount'));
+  if (amount === null) throw new Error('请填写有效金额');
   return { date: v('date'), merchant: v('merchant'), description: v('description'), type,
     category_id: v('category_id') ? +v('category_id') : null, amount };
 }
@@ -206,8 +215,14 @@ function bind() {
   }));
   const box = r.querySelector('[data-editor]');
   if (box) {
+    let prevType = box.querySelector('[name="type"]').value;
     box.querySelector('[name="type"]').addEventListener('change', e => {
       const t = e.target.value;
+      const amtEl = box.querySelector('[name="amount"]');
+      const stored = storedAmount(prevType, amtEl.value);
+      if (stored !== null) amtEl.value = amountText(t, stored);
+      amtEl.placeholder = t === 'expense' ? '−0.00' : '0.00';
+      prevType = t;
       const sel = box.querySelector('[name="category_id"]');
       sel.disabled = t === 'transfer';
       sel.innerHTML = t === 'transfer' ? '<option value="">— 转账不分类</option>' : catOptions(t, null, { placeholder: true });
