@@ -58,6 +58,7 @@ def replay(conn, until=None):
                 continue
             p = pos[inst["id"]]
             cny_book = book_currency(inst) == "CNY"
+            res["qty_before"], res["avg_before"] = p["qty"], p["avg"]
             if t["kind"] == "buy":
                 p["qty"] += t["qty"]
                 p["cost"] += t["amount"]
@@ -85,6 +86,7 @@ def replay(conn, until=None):
         else:
             cur = t["currency"]
             f = fx[cur]
+            res["bal_before"], res["avg_before"] = f["bal"], f["avg"]
             if t["kind"] == "fx_buy":
                 total = f["bal"] + t["qty"]
                 f["avg"] = (f["bal"] * f["avg"] + t["amount"]) / total if total > EPS else f["avg"]

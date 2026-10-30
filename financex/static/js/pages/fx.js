@@ -11,7 +11,7 @@ export async function render(root) {
   S = {
     root, id: t?.id || null, hold,
     f: { kind: t?.kind || (q.kind === 'fx_sell' ? 'fx_sell' : 'fx_buy'), currency: t?.currency || q.currency || 'USD',
-      date: t?.date || today(), qty: t ? fmt(t.qty) : '', amount: t ? fmt(t.amount) : '', opening: !!t?.opening },
+      date: t?.date || today(), qty: t ? String(t.qty) : '', amount: t ? String(t.amount) : '', opening: !!t?.opening },
     pv: null,
   };
   draw();
@@ -21,6 +21,9 @@ export async function render(root) {
 function draw() {
   const f = S.f, sell = f.kind === 'fx_sell';
   const pv = S.pv, r = pv?.result, b = pv?.before, a = pv?.after;
+  // 公式用这笔交易发生时（按日期重放）的余额与成本，而不是当前的最终状态
+  const tb = r && r.bal_before !== undefined ? { bal: r.bal_before, avg: r.avg_before } : b;
+  const ta = r && r.bal_after !== undefined ? { bal: r.bal_after, avg: r.avg_after } : a;
   const fxq = parseNum(f.qty), cny = parseNum(f.amount);
   const hist = (S.hold.fx.find(x => x.currency === f.currency)?.trades || []);
   S.root.innerHTML = `<div class="pg">${backStrip('#/holdings', '持仓', '购汇 / 结汇')}<div class="wrap">
@@ -39,12 +42,12 @@ ${sell
 </div>
 <div style="border-top:2px solid #141414;padding-top:14px;display:flex;flex-direction:column;gap:10px">
 <span class="mut" style="font-size:12px">按统计口径计算</span>
-${r && b ? (sell ? `<div class="kv"><span>结汇本金 = ${fmt(Math.min(fxq, b.bal))} × 平均购汇成本 ${fmt(b.avg, 4)}${fxq > b.bal + 1e-9 ? `（超出购汇余额的 ${fmt(fxq - b.bal)} 本金为 0）` : ''}</span><span>${fmt(r.principal)}</span></div>
+${r && tb ? (sell ? `<div class="kv"><span>结汇本金 = ${fmt(Math.min(fxq, tb.bal))} × 平均购汇成本 ${fmt(tb.avg, 4)}${fxq > tb.bal + 1e-9 ? `（超出当时购汇余额的 ${fmt(fxq - tb.bal)} 本金为 0）` : ''}</span><span>${fmt(r.principal)}</span></div>
 <div class="kv"><span>汇兑损益 = 收到 ${fmt(cny)} − 本金 ${fmt(r.principal)}</span><span class="${r.pnl >= 0 ? 'up' : 'dn'}">${sgn(r.pnl)}</span></div>
 <div class="kv t"><span>人民币现金增加</span><span>${fmt(cny)}</span></div>
 <span style="font-size:13px;line-height:1.6">保存后自动生成一笔「投资收益 · 汇兑损益」<b class="${r.pnl >= 0 ? 'up' : 'dn'}">${sgn(r.pnl)}</b>（可能为负），计入利润表与结余；投资净投入减去本金 <b>${fmt(r.principal)}</b>。超出购汇余额的部分本金为 0，全部计为损益。</span>`
-    : `<div class="kv"><span>新成本 =（${fmt(b.bal)} × ${fmt(b.avg, 4)} + ${fmt(cny)}）÷（${fmt(b.bal)} + ${fmt(fxq)}）</span><span>${fmt(a.avg, 4)}</span></div>
-<div class="kv"><span>购汇余额</span><span>${fmt(b.bal)} → ${fmt(a.bal)}</span></div>
+    : `<div class="kv"><span>新成本 =（${fmt(tb.bal)} × ${fmt(tb.avg, 4)} + ${fmt(cny)}）÷（${fmt(tb.bal)} + ${fmt(fxq)}）</span><span>${fmt(ta.avg, 4)}</span></div>
+<div class="kv"><span>购汇余额（${dDot(f.date)} 时）</span><span>${fmt(tb.bal)} → ${fmt(ta.bal)}</span></div>
 <span style="font-size:13px;line-height:1.6">${f.opening ? '期初购汇不计入投资净投入。' : `投资净投入 <b>+${fmt(cny)}</b>。`}</span>`)
     : '<span class="mut" style="font-size:13px">填写数量和金额后显示计算结果。</span>'}
 </div>

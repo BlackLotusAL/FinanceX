@@ -135,8 +135,9 @@ def overview(conn):
 
 def stocktake(conn, month):
     snap = db.one(conn.execute("SELECT * FROM snapshots WHERE month=?", (month,)))
-    saved_bal = {r["account_id"]: r["balance"] for r in conn.execute(
+    saved_rows = {r["account_id"]: dict(r) for r in conn.execute(
         "SELECT * FROM snap_balances WHERE month=?", (month,))}
+    saved_bal = {k: r["balance"] for k, r in saved_rows.items()}
     saved_pos = {r["instrument_id"]: dict(r) for r in conn.execute(
         "SELECT * FROM snap_positions WHERE month=?", (month,))}
     prev_snap = conn.execute("SELECT month FROM snapshots WHERE month < ? ORDER BY month DESC LIMIT 1",
@@ -151,6 +152,8 @@ def stocktake(conn, month):
         a = dict(a)
         if a["disabled"] and a["id"] not in saved_bal:
             continue
+        if a["id"] in saved_rows and saved_rows[a["id"]]["currency"]:
+            a["currency"] = saved_rows[a["id"]]["currency"]  # 存档时的币种
         a["prev"] = prev_bal.get(a["id"])
         a["value"] = saved_bal.get(a["id"]) if snap else None
         a["in_snapshot"] = a["id"] in saved_bal
@@ -165,6 +168,8 @@ def stocktake(conn, month):
         saved = saved_pos.get(iid)
         if not saved and (inst["disabled"] or p["qty"] <= ledger.EPS):
             continue
+        if saved and saved.get("currency"):  # 存档时的币种与港股通标记
+            inst = {**inst, "currency": saved["currency"], "connect": saved["connect"]}
         positions.append({
             "instrument_id": iid, "code": inst["code"], "name": inst["name"],
             "category": inst["category"], "currency": inst["currency"], "connect": inst["connect"],
@@ -206,6 +211,11 @@ def save_stocktake(conn, data, backup_fn):
         ts = db.now()
         rates = {k: float(v) for k, v in (data.get("rates") or {}).items()
                  if k in ("USD", "HKD") and v not in (None, "")}
+        # 覆盖已有快照时，原有账户 / 标的沿用存档的币种，不被之后改过的元数据替换
+        kept_bal = {r[0]: r[1] for r in conn.execute(
+            "SELECT account_id, currency FROM snap_balances WHERE month=?", (month,))}
+        kept_pos = {r[0]: (r[1], r[2]) for r in conn.execute(
+            "SELECT instrument_id, currency, connect FROM snap_positions WHERE month=?", (month,))}
         conn.execute("DELETE FROM snap_balances WHERE month=?", (month,))
         conn.execute("DELETE FROM snap_positions WHERE month=?", (month,))
         conn.execute(
@@ -215,14 +225,17 @@ def save_stocktake(conn, data, backup_fn):
             (month, data["date"], json.dumps(rates), data.get("rate_note", ""), ts, ts))
         for b in data.get("balances", []):
             v = b.get("balance")
-            conn.execute("INSERT INTO snap_balances(month,account_id,balance) VALUES (?,?,?)",
-                         (month, b["account_id"], None if v in (None, "") else float(v)))
+            conn.execute("INSERT INTO snap_balances(month,account_id,balance,currency) VALUES (?,?,?,?)",
+                         (month, b["account_id"], None if v in (None, "") else float(v),
+                          kept_bal.get(b["account_id"])))
         for p in data.get("positions", []):
             v = p.get("price")
             conn.execute(
-                "INSERT INTO snap_positions(month,instrument_id,qty,price,cost,price_note) VALUES (?,?,?,?,?,?)",
+                "INSERT INTO snap_positions(month,instrument_id,qty,price,cost,price_note,currency,connect) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 (month, p["instrument_id"], float(p["qty"]), None if v in (None, "") else float(v),
-                 float(p.get("cost") or 0), p.get("price_note", "")))
+                 float(p.get("cost") or 0), p.get("price_note", ""),
+                 *kept_pos.get(p["instrument_id"], (None, None))))
         db.archive_snapshot_meta(conn)
         conn.commit()
     return {"month": month, "overwritten": bool(exists)}

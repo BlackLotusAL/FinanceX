@@ -194,6 +194,29 @@ class Snapshot(unittest.TestCase):
         server.account_update(conn, {}, {"currency": "CNY"}, str(usd))
         self.assertAlmostEqual(reports.snapshot_detail(conn, "2026-09")["net"], 700)
 
+    def test_resaving_snapshot_keeps_archived_currency(self):
+        conn = fresh()
+        usd = account(conn, "美元户", currency="USD")
+        data = {"month": "2026-09", "date": "2026-09-30", "rates": {"USD": 7, "HKD": 0.9},
+                "balances": [{"account_id": usd, "balance": 100}], "positions": []}
+        reports.save_stocktake(conn, data, lambda k: None)
+        server.account_update(conn, {}, {"currency": "CNY"}, str(usd))
+        st = reports.stocktake(conn, "2026-09")
+        self.assertEqual(st["accounts"][0]["currency"], "USD")  # 编辑器里显示存档币种
+        reports.save_stocktake(conn, data, lambda k: None)  # 原样重存
+        self.assertAlmostEqual(reports.snapshot_detail(conn, "2026-09")["net"], 700)
+
+    def test_fx_preview_uses_transaction_time_state(self):
+        conn = fresh()
+        trade(conn, "fx_buy", "2026-01-10", 1000, 7000, currency="USD")
+        trade(conn, "fx_buy", "2026-03-10", 1000, 8000, currency="USD")
+        pv = server.trade_preview(conn, {}, {"kind": "fx_sell", "date": "2026-02-10", "qty": 500,
+                                             "amount": 3600, "currency": "USD"})
+        r = pv["result"]
+        self.assertAlmostEqual(r["avg_before"], 7.0)
+        self.assertAlmostEqual(r["bal_before"], 1000)
+        self.assertAlmostEqual(r["principal"], 3500)
+
     def test_oversell_rejected(self):
         conn = fresh()
         i = instrument(conn, "510300", "沪深300ETF", category="etf")
@@ -358,6 +381,22 @@ class Import(unittest.TestCase):
         finally:
             parsers._pdf_text = orig
         self.assertEqual(pv2["rows"][0]["state"], "ok")
+
+
+    def test_wallet_after_booked_card_not_checked(self):
+        conn = fresh()
+        lines = ["260930 260930 1234 消费 支付宝-某店 -100.00/CNY -100.00/CNY"]
+        orig = parsers._pdf_text
+        parsers._pdf_text = lambda data: lines
+        try:
+            pv = importer.preview(conn, [{"name": "c.pdf", "data": base64.b64encode(b"x").decode()}])
+            importer.confirm(conn, pv["files"], [r for r in pv["rows"] if r["checked"]])
+        finally:
+            parsers._pdf_text = orig
+        alipay = ("交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
+                  "2026-09-29 19:02:11,购物,某店,x,货品,支出,100.00,花呗,交易成功,A7,,\n").encode("gbk")
+        pv2 = importer.preview(conn, [{"name": "a.csv", "data": base64.b64encode(alipay).decode()}])
+        self.assertEqual([(r["state"], r["checked"]) for r in pv2["rows"]], [("suspect_drop", False)])
 
 
 class HttpGuards(unittest.TestCase):

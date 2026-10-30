@@ -86,8 +86,9 @@ def preview(conn, files):
                     r["state"] = "suspect_drop"
                     r["note"] = f"与已入账的 {parsers.SOURCE_NAMES[f['source']]}「{f['merchant']}」疑似重复"
                 else:
-                    r["state"] = "suspect_keep"
-                    r["note"] = f"与已入账的信用卡「{f['merchant']}」疑似重复"
+                    # 信用卡那笔已经入账，这一侧默认不导入，否则同一笔消费会计两次
+                    r["state"] = "suspect_drop"
+                    r["note"] = f"与已入账的信用卡「{f['merchant']}」疑似重复，默认不导入"
                 break
 
     for r in rows:
