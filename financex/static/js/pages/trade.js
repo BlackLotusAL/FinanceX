@@ -1,4 +1,4 @@
-import { get, post, put, del, qs, backStrip, esc, fmt, sgn, qty, dDot, today, parseNum, CUR_SYM, toast, fail, go, confirmBox } from '../util.js';
+import { get, post, put, del, qs, backStrip, esc, fmt, sgn, qty, dDot, today, parseNum, CUR_SYM, toast, fail, go, confirmBox, once, busyAttr } from '../util.js';
 
 let S = null;
 
@@ -100,7 +100,7 @@ function dock() {
   const r = S.pv?.result;
   return `<div class="dock">${S.f.kind === 'sell' ? `<span><span class="k">已实现盈亏</span><span class="v ${r ? (r.realized >= 0 ? 'up' : 'dn') : ''}">${r ? sgn(r.realized) : '—'}</span></span>` : ''}
 <span><span class="k">投资净投入</span><span class="v">${r ? sgn(r.inv) : '—'}</span></span><span style="flex:1"></span>
-<a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save" style="padding:0 30px">保存交易</button></div>`;
+<a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save" data-once="trade-save"${busyAttr('trade-save')} style="padding:0 30px">保存交易</button></div>`;
 }
 
 let timer;
@@ -132,7 +132,7 @@ function bind() {
   r.querySelector('[name="instrument_id"]')?.addEventListener('change', e => { S.f.instrument_id = +e.target.value; S.pv = null; draw(); preview(); });
   for (const n of ['date', 'qty', 'amount']) r.querySelector(`[name="${n}"]`)?.addEventListener('input', e => { S.f[n] = e.target.value; preview(); });
   r.querySelector('[name="opening"]')?.addEventListener('change', e => { S.f.opening = e.target.checked; draw(); preview(); });
-  r.querySelector('[data-act="save"]')?.addEventListener('click', async () => {
+  r.querySelector('[data-act="save"]')?.addEventListener('click', once('trade-save', async () => {
     const b = payload();
     if (!(b.qty > 0)) return toast('请填写数量', true);
     if (!Number.isFinite(b.amount)) return toast('请填写金额', true);
@@ -141,7 +141,7 @@ function bind() {
       toast('已保存交易');
       go('#/holdings');
     } catch (e) { fail(e); }
-  });
+  }));
   r.querySelector('[data-act="del"]')?.addEventListener('click', async () => {
     if (!await confirmBox('删除这笔交易', '持仓、已实现盈亏和自动生成的流水会重新计算。已存档的快照不会改变。', '删除', true)) return;
     try { await del(`/api/trades/${S.id}`); toast('已删除'); go('#/holdings'); } catch (e) { fail(e); }

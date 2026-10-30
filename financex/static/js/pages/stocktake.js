@@ -1,6 +1,6 @@
 import {
   get, post, put, qs, strip, esc, fmt, sgn, wan, qty, priceFmt, dDot, today, monthLabel, mShort, parseNum,
-  CUR_NAME, CUR_CODE, toast, fail, go, confirmBox, stripDate,
+  CUR_NAME, CUR_CODE, toast, fail, go, confirmBox, stripDate, once, busyAttr,
 } from '../util.js';
 
 let S = null;
@@ -72,7 +72,7 @@ ${isHist && !d.snapshot ? `<div class="banner" style="margin-top:12px"><span><b>
 </div></div>
 <div class="dock"><span><span class="k">已填部分 · 净资产</span><span class="v" id="dock-net">${wan(c.net)} 万</span></span><span><span class="k">待填</span><span class="v" id="dock-todo">${c.todo} 格</span></span><span style="flex:1"></span>
 <span class="mut" style="font-size:12px;max-width:300px">完成后存为 ${mShort(S.month)}快照；同月再盘点会先自动备份再覆盖，存档后每格仍可直接改。</span>
-<button type="button" class="btn pri" data-act="save" style="height:50px;padding:0 30px">完成盘点</button></div></div>`;
+<button type="button" class="btn pri" data-act="save" data-once="stocktake-save"${busyAttr('stocktake-save')} style="height:50px;padding:0 30px">完成盘点</button></div></div>`;
   bind();
 }
 
@@ -265,7 +265,7 @@ function bind() {
   r.querySelector('[data-act="save"]').addEventListener('click', save);
 }
 
-async function save() {
+const save = once('stocktake-save', async () => {
   for (const a of S.acc) if (a.input !== '' && Number.isNaN(parseNum(a.input))) return toast(`「${a.name}」的余额不是数字`, true);
   for (const p of S.pos) if (p.input !== '' && Number.isNaN(parseNum(p.input))) return toast(`「${p.name}」的价格不是数字`, true);
   const c = calc();
@@ -281,4 +281,4 @@ async function save() {
     toast(`已存为 ${mShort(S.month)}快照`);
     go(`#/bs?month=${S.month}`);
   } catch (e) { fail(e); }
-}
+});

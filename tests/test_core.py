@@ -194,6 +194,17 @@ class Snapshot(unittest.TestCase):
         server.account_update(conn, {}, {"currency": "CNY"}, str(usd))
         self.assertAlmostEqual(reports.snapshot_detail(conn, "2026-09")["net"], 700)
 
+    def test_connect_pnl_empty_without_rate(self):
+        conn = fresh()
+        i = instrument(conn, "00700", "腾讯控股", currency="HKD", connect=True)
+        reports.save_stocktake(conn, {
+            "month": "2026-09", "date": "2026-09-30", "rates": {"USD": 7},
+            "balances": [], "positions": [{"instrument_id": i, "qty": 10, "price": 100, "cost": 1000}]},
+            lambda k: None)
+        item = [x for g in reports.snapshot_detail(conn, "2026-09")["groups"] for x in g["items"]][0]
+        self.assertIsNone(item["cny"])
+        self.assertIsNone(item["pnl"])
+
     def test_resaving_snapshot_keeps_archived_currency(self):
         conn = fresh()
         usd = account(conn, "美元户", currency="USD")
@@ -397,6 +408,21 @@ class Import(unittest.TestCase):
                   "2026-09-29 19:02:11,购物,某店,x,货品,支出,100.00,花呗,交易成功,A7,,\n").encode("gbk")
         pv2 = importer.preview(conn, [{"name": "a.csv", "data": base64.b64encode(alipay).decode()}])
         self.assertEqual([(r["state"], r["checked"]) for r in pv2["rows"]], [("suspect_drop", False)])
+
+
+    def test_booked_flow_suppresses_only_one_incoming(self):
+        conn = fresh()
+        add_flow(conn, "2026-09-29", 100, "expense", "实体商品", None, merchant="某店", source="alipay")
+        conn.commit()
+        lines = ["260929 260930 1234 消费 支付宝-某店 -100.00/CNY -100.00/CNY",
+                 "260930 260930 1234 消费 另一家店 -100.00/CNY -100.00/CNY"]
+        orig = parsers._pdf_text
+        parsers._pdf_text = lambda data: lines
+        try:
+            pv = importer.preview(conn, [{"name": "c.pdf", "data": base64.b64encode(b"x").decode()}])
+        finally:
+            parsers._pdf_text = orig
+        self.assertEqual([r["state"] for r in pv["rows"]], ["suspect_drop", "ok"])
 
 
 class HttpGuards(unittest.TestCase):

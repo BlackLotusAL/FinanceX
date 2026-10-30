@@ -1,4 +1,4 @@
-import { get, post, put, del, qs, backStrip, esc, fmt, sgn, dDot, today, parseNum, toast, fail, go, confirmBox } from '../util.js';
+import { get, post, put, del, qs, backStrip, esc, fmt, sgn, dDot, today, parseNum, toast, fail, go, confirmBox, once, busyAttr } from '../util.js';
 
 const NAME = { USD: '美元 USD', HKD: '港币 HKD' };
 let S = null;
@@ -73,7 +73,7 @@ ${hist.length ? hist.map(t => `<div class="kv"><span><span class="mono mut">${dD
 <div class="dock">${sell ? `<span><span class="k">汇兑损益</span><span class="v ${r ? (r.pnl >= 0 ? 'up' : 'dn') : ''}">${r ? sgn(r.pnl) : '—'}</span></span>` : ''}
 <span><span class="k">投资净投入</span><span class="v">${r ? sgn(r.inv) : '—'}</span></span>
 <span><span class="k">${f.currency} 购汇余额</span><span class="v">${a ? fmt(a.bal) : '—'}</span></span><span style="flex:1"></span>
-<a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save" style="padding:0 30px">保存${sell ? '结汇' : '购汇'}</button></div></div>`;
+<a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save" data-once="fx-save"${busyAttr('fx-save')} style="padding:0 30px">保存${sell ? '结汇' : '购汇'}</button></div></div>`;
   bind();
 }
 
@@ -105,7 +105,7 @@ function bind() {
   r.querySelector('[name="currency"]').addEventListener('change', e => { S.f.currency = e.target.value; draw(); preview(); });
   for (const n of ['date', 'qty', 'amount']) r.querySelector(`[name="${n}"]`).addEventListener('input', e => { S.f[n] = e.target.value; preview(); });
   r.querySelector('[name="opening"]').addEventListener('change', e => { S.f.opening = e.target.checked; draw(); preview(); });
-  r.querySelector('[data-act="save"]').addEventListener('click', async () => {
+  r.querySelector('[data-act="save"]').addEventListener('click', once('fx-save', async () => {
     const b = payload();
     if (!(b.qty > 0)) return toast('请填写外币数量', true);
     if (!Number.isFinite(b.amount)) return toast('请填写人民币金额', true);
@@ -113,7 +113,7 @@ function bind() {
       if (S.id) await put(`/api/trades/${S.id}`, b); else await post('/api/trades', b);
       toast('已保存'); go('#/holdings');
     } catch (e) { fail(e); }
-  });
+  }));
   r.querySelector('[data-act="del"]')?.addEventListener('click', async () => {
     if (!await confirmBox('删除这笔记录', '购汇余额、平均成本和自动生成的汇兑损益流水会重新计算。', '删除', true)) return;
     try { await del(`/api/trades/${S.id}`); toast('已删除'); go('#/holdings'); } catch (e) { fail(e); }

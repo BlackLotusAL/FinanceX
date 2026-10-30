@@ -141,6 +141,22 @@ export function reportHeader(active, selector) {
 
 // ---------- 提示 ----------
 let toastTimer;
+// 防止重复提交：同一 key 的请求未完成前，再次触发直接忽略。
+// 页面重绘按钮时用 busyAttr(key) 保持禁用状态。
+const pending = new Set();
+export const busyAttr = key => (pending.has(key) ? ' disabled aria-busy="true"' : '');
+export function once(key, fn) {
+  return async (...args) => {
+    if (pending.has(key)) return;
+    pending.add(key);
+    document.querySelectorAll(`[data-once="${key}"]`).forEach(b => { b.disabled = true; });
+    try { return await fn(...args); } finally {
+      pending.delete(key);
+      document.querySelectorAll(`[data-once="${key}"]`).forEach(b => { b.disabled = false; });
+    }
+  };
+}
+
 export function toast(msg, err = false) {
   document.querySelector('.toast')?.remove();
   const el = document.createElement('div');

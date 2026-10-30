@@ -1,6 +1,6 @@
 import {
   get, post, put, state, header, mainStrip, esc, fmt, sgn, monthLabel, monthAdd, mShort, cnMonth, dShort, today,
-  catOptions, typeOptions, flowAmount, SRC_NAME, TYPE_NAME, parseNum, toast, fail, confirmBox, go,
+  catOptions, typeOptions, flowAmount, SRC_NAME, TYPE_NAME, parseNum, toast, fail, confirmBox, go, once, busyAttr,
 } from '../util.js';
 
 let S = null;
@@ -98,7 +98,7 @@ function editor(f) {
 <input class="f r" type="text" name="amount" value="${amt}" placeholder="${typ === 'expense' ? '−0.00' : '0.00'}" aria-label="金额"></div>
 <div class="editbar"><span class="mut" style="font-size:12px;margin-right:auto">支出直接填金额；退款填 +金额。回车保存，Esc 取消。</span>
 ${f ? '<button type="button" class="lk" data-act="del-one" style="color:#B3261E">删除</button>' : ''}
-<button type="button" class="lk" data-act="cancel" style="color:#4A4740">取消</button><button type="button" class="lk" data-act="save">保存这笔</button></div>`;
+<button type="button" class="lk" data-act="cancel" style="color:#4A4740">取消</button><button type="button" class="lk" data-act="save" data-once="flow-save"${busyAttr('flow-save')}>保存这笔</button></div>`;
 }
 
 function summaryPanel() {
@@ -144,7 +144,7 @@ function readEditor(box) {
     category_id: v('category_id') ? +v('category_id') : null, amount };
 }
 
-async function saveEditor() {
+const saveEditor = once('flow-save', async () => {
   const box = S.root.querySelector('[data-editor]');
   if (!box) return;
   try {
@@ -157,7 +157,7 @@ async function saveEditor() {
     if (body.date.slice(0, 7) !== S.month) go(`#/bills/${body.date.slice(0, 7)}`);
     else await refresh();
   } catch (e) { fail(e); }
-}
+});
 
 async function refresh() {
   S.data = await get(`/api/bills?month=${S.month}`);

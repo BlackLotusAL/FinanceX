@@ -75,11 +75,14 @@ def preview(conn, files):
     db_wallet = db.rows(conn.execute(
         "SELECT id, date, amount, type, source, merchant FROM flows WHERE type != 'transfer' "
         "AND source IN ('alipay','wechat','abc')"))
+    booked_used = set()  # 每笔已入账流水最多压下一条新导入的
     for r in live:
         if r["state"] != "ok":
             continue
         other = ("alipay", "wechat") if r["source"] == "abc" else ("abc",)
         for f in db_wallet:
+            if f["id"] in booked_used:
+                continue
             if f["source"] in other and f["type"] == r["type"] and abs(f["amount"] - r["amount"]) < 0.005 \
                     and _days(f["date"], r["date"]) <= 1:
                 if r["source"] == "abc":
@@ -89,6 +92,7 @@ def preview(conn, files):
                     # 信用卡那笔已经入账，这一侧默认不导入，否则同一笔消费会计两次
                     r["state"] = "suspect_drop"
                     r["note"] = f"与已入账的信用卡「{f['merchant']}」疑似重复，默认不导入"
+                booked_used.add(f["id"])
                 break
 
     for r in rows:

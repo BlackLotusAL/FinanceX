@@ -78,7 +78,7 @@ def snapshot_detail(conn, month):
         if mv is None:
             pnl = None
         elif book == "CNY":
-            pnl = (cny or 0) - p["cost"]
+            pnl = cny - p["cost"] if cny is not None else None  # 缺汇率时不显示盈亏
         else:
             pnl = mv - p["cost"]
         groups[g]["items"].append({
