@@ -22,7 +22,6 @@ function empty(d) {
 
 function body(d) {
   const delta = d.prev ? d.net - d.prev.net : null;
-  const pct = d.prev && d.prev.net ? delta / Math.abs(d.prev.net) : null;
   const ytd = d.base ? d.net - d.base.net : null;
   const ytdPct = d.base && d.base.net ? ytd / Math.abs(d.base.net) : null;
   const mname = cnMonth(d.month);
@@ -30,24 +29,27 @@ function body(d) {
     : `净资产 ${wan(d.net)} 万元，<br>${mname}${delta >= 0 ? '再添' : '减少'} ${wan(Math.abs(delta))} 万`;
   const arrow = v => (v >= 0 ? '▲' : '▼');
   const next = monthAdd(d.month, 1);
+  // 缺月提示：标出最早的几个未盘点月份
+  const gaps = d.series.filter(s => !s.groups).map(s => s.month.slice(2).replace('-', '.'));
+  const gapHint = gaps.length ? `${gaps.slice(0, 3).join('、')}${gaps.length > 3 ? ` 等 ${gaps.length} 个月` : ''} 未盘点，可在盘点里补录。` : '';
   return `<main class="cols" style="gap:44px;padding-top:28px">
 <article class="main" style="gap:14px">
-<span class="kick">净资产 · ${monthLabel(d.month)}快照</span>
+<span class="kick">${monthLabel(d.month)}快照</span>
 <h1 class="h1" style="font-size:66px;line-height:1.06">${head}</h1>
 <div style="display:flex;flex-wrap:wrap;gap:6px 32px;align-items:baseline;font-size:13px;border-top:5px solid #141414;padding-top:12px">
-${delta === null ? '<span class="mut">上个月没有快照，无法对比</span>' : `<span><span class="mut">较上月</span> <span class="${cls(delta)}" style="font-size:16px;font-weight:700">${arrow(delta)} ${wan(Math.abs(delta))} 万</span> <span class="mono ${cls(delta)}" style="font-size:12px">${pct === null ? '' : (pct >= 0 ? '+' : '−') + Math.abs(pct * 100).toFixed(2) + '%'}</span></span>`}
+${delta === null ? '<span class="mut">上个月没有快照，无法对比</span>' : ''}
 ${ytd === null ? '' : `<span><span class="mut">今年以来</span> <span class="${cls(ytd)}" style="font-size:16px;font-weight:700">${arrow(ytd)} ${wan(Math.abs(ytd))} 万</span> <span class="mono ${cls(ytd)}" style="font-size:12px">${ytdPct === null ? '' : (ytdPct >= 0 ? '+' : '−') + Math.abs(ytdPct * 100).toFixed(2) + '%'}</span> <span class="mut" style="font-size:12px">较 ${d.base.month.replace('-', '.')} 快照</span></span>`}
 </div>
-<div class="sec" style="margin-top:22px"><b>净资产走势</b><span class="mono mut" style="font-size:12px">按币种堆叠 · 万元 · 缺月留空、不插值</span></div>
+<div class="sec" style="margin-top:22px"><b>净资产走势</b><span class="mono mut" style="font-size:12px">按币种堆叠 · 万元</span></div>
 ${chart(d.series)}
 <div class="sec s3" style="margin-top:18px"><b>最近 12 个月</b><span class="mono mut" style="font-size:12px">月末净资产 · 万元 · 较上月</span></div>
 ${last12(d.series)}
 </article>
 <aside class="side" style="gap:6px">
 <div class="sec"><b>上次盘点</b><span class="mono" style="font-size:12px">${dDot(d.date)}</span></div>
-<p style="margin:8px 0 0;font-size:15px;line-height:1.6">盘点了 <b>${mShort(d.month)}</b>：${d.accounts} 个手填账户、${d.positions} 只持仓标的。下一次在 ${+monthAdd(next, 1).slice(5)} 月初盘点 ${+next.slice(5)} 月。</p>
+<p style="margin:8px 0 0;font-size:15px;line-height:1.6">已盘点 <b>${mShort(d.month)}</b>。下次：${+monthAdd(next, 1).slice(5)} 月初盘点 ${+next.slice(5)} 月。</p>
 <a href="#/stocktake" class="btn pri" style="margin-top:14px;height:52px;font-size:15px;align-self:stretch">盘点</a>
-<span class="mut" style="font-size:12px;margin-top:6px">也可在盘点面板里选历史月份补录。</span>
+${gapHint ? `<span class="mut" style="font-size:12px;margin-top:6px">${gapHint}</span>` : ''}
 <div class="sec s3" style="margin-top:30px"><b>按币种 · ${mShort(d.month)}</b><span class="mono mut" style="font-size:12px">万元 · 较上月</span></div>
 ${ORDER.map(g => {
     const v = d.groups[g] || 0, p = d.prev ? (d.prev.groups[g] || 0) : null;

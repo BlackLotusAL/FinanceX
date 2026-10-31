@@ -3,7 +3,7 @@ import {
   CUR_NAME, CUR_SHORT, CUR_SYM, flowAmount, TYPE_NAME, SRC_NAME,
 } from '../util.js';
 
-const strip = () => backStrip('#/overview', '总览', '财务报表 · 只读');
+const strip = () => backStrip('#/overview', '总览', '');
 
 export async function render(root, { name }) {
   if (name === 'is') return renderIS(root);
@@ -37,20 +37,19 @@ async function renderBS(root) {
       const p = det.net ? g.total / det.net * 100 : 0;
       return `<div style="display:grid;grid-template-columns:110px minmax(0,1fr) 56px;gap:10px;align-items:center;padding:7px 0;font-size:13px"><span>${CUR_SHORT[g.currency]}</span><div class="bar"><i style="width:${Math.max(0, Math.min(100, p)).toFixed(1)}%"></i></div><span class="mono" style="text-align:right">${p.toFixed(1)}%</span></div>`;
     }).join('');
-    const hasNeg = det.groups.some(g => g.items.some(i => i.kind === 'account' && i.value < 0));
     body = `<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;padding:20px 0 14px">
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">资产负债表 · ${mShort(d.month)}快照</span><h1 class="h1" style="font-size:40px;line-height:1.1">${cnMonth(d.month)}末净资产 ${wan(det.net)} 万元</h1>
-<p class="dek">快照于 <b>${dDot(det.date)}</b> 盘点存档，存下当时的余额、价格与汇率，之后不自动重算；需要时可在盘点面板里直接改任一格。</p></div></div>
+<p class="dek">按 ${dShort(det.date)} 盘点时的余额、价格与汇率存档，不自动重算；可在盘点里改任一格。</p></div></div>
 <div class="cols" style="border-top:5px solid #141414;padding-top:4px">
 <section class="main"><div class="scroll"><div style="min-width:720px">
 <div class="br mono" style="font-size:12px;color:#4A4740;border-bottom:0;padding-top:14px"><span>账户 / 标的</span><span>数量</span><span>价格</span><span>余额 / 市值（原币）</span><span>折合 ¥</span><span>浮动盈亏</span></div>
 ${rows}
 <div class="br" style="border-top:3px solid #141414;border-bottom:6px double #141414;padding:12px 0;margin-top:12px"><span style="font-family:var(--f-serif);font-weight:900;font-size:16px">净资产</span><span></span><span></span><span></span><span style="font-weight:600;font-size:14px">${fmt(det.net)}</span><span></span></div>
 </div></div>
-<span class="mut" style="font-size:12px;margin-top:10px">浮动盈亏 = 市值 − 成本（数量 × 移动加权成本）；外币标的按原币，港股通按人民币。负债以负数余额列在所属币种中${hasNeg ? '' : '，本月没有'}。${det.missing ? ` 有 ${det.missing} 格未填，未计入。` : ''}</span></section>
+<span class="mut" style="font-size:12px;margin-top:10px">浮动盈亏 = 市值 − 成本（数量 × 移动加权成本）；外币标的按原币，港股通按人民币。${det.missing ? ` 有 ${det.missing} 格未填，未计入。` : ''}</span></section>
 <aside class="side" style="gap:24px;padding-top:16px">
 <div class="panel"><div class="sec s3"><b>快照信息</b></div>
-<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding-top:10px;font-size:13px"><span class="mut">盘点日期</span><span class="mono">${dDot(det.date)}</span><span class="mut">USD</span><span class="mono">${det.rates.USD ?? '—'}</span><span class="mut">HKD</span><span class="mono">${det.rates.HKD ?? '—'}</span><span class="mut">USDT</span><span class="mono">按 1:1 美元</span><span class="mut">手填账户</span><span class="mono">${det.accounts}</span><span class="mut">持仓标的</span><span class="mono">${det.positions}</span></div></div>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding-top:10px;font-size:13px"><span class="mut">盘点日期</span><span class="mono">${dDot(det.date)}</span><span class="mut">USD</span><span class="mono">${det.rates.USD ?? '—'}</span><span class="mut">HKD</span><span class="mono">${det.rates.HKD ?? '—'}</span><span class="mut">USDT</span><span class="mono">按 1:1 美元</span></div></div>
 <div class="panel"><div class="sec s3"><b>按币种</b><span class="mono mut" style="font-size:12px">占净资产</span></div>${share}</div>
 <a class="lk" href="#/stocktake?month=${d.month}" style="align-self:flex-start">重新盘点 ${mShort(d.month)} →</a>
 <div style="border-top:2px solid #141414"></div></aside></div>`;
@@ -111,11 +110,11 @@ function drawIS() {
   IS.root.innerHTML = `<div class="pg">${strip()}<div class="wrap">${reportHeader('is', yearSel(d.years, d.year))}
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;padding:20px 0 14px">
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">利润表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">${d.year === new Date().getFullYear().toString() ? '今年' : esc(d.year) + ' 年'}结余 ${fmt(t.balance, 0)}${t.rate !== null ? `，储蓄率 ${(t.rate * 100).toFixed(1)}%` : ''}</h1>
-<p class="dek">收入 <b>${fmt(t.income, 0)}</b>，支出 <b>${fmt(t.expense, 0)}</b>。由流水按两级分类、按月汇总；只记人民币已实现部分，外币收益与浮动盈亏只体现在净资产里。</p></div>
-<span class="mut" style="font-size:12px">一级始终显示；二级只列当年有发生额的，点 ▸ 展开</span></div>
+<p class="dek">只计人民币已实现收支；外币收益与浮动盈亏只在净资产里体现。</p></div>
+<span class="mut" style="font-size:12px">点 ▸ 展开二级分类</span></div>
 <div style="border-top:5px solid #141414"></div>
 ${ms.length ? `<div class="scroll"><div style="min-width:${300 + ms.length * 80}px">${h}</div></div>` : '<div class="empty">这一年还没有流水。</div>'}
-<p class="mut" style="font-size:12px;margin:12px 0 0">「已实现盈亏」由人民币标的卖出、「汇兑损益」由结汇自动生成，可能为负。点任一数字可查看构成它的流水。</p>
+<p class="mut" style="font-size:12px;margin:12px 0 0">点任一数字可查看构成它的流水。</p>
 <div id="drill"></div></div></div>`;
   bindIS();
   if (IS.drill) showISDrill();
@@ -195,7 +194,7 @@ function drawCF() {
   CF.root.innerHTML = `<div class="pg">${strip()}<div class="wrap">${reportHeader('cf', yearSel(d.years, d.year))}
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;padding:20px 0 14px">
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">现金流量表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">结余 ${fmt(d.total.balance, 0)}，其中 ${fmt(Math.max(d.total.inv, 0), 0)} 投向了投资</h1>
-<p class="dek">每月两行：<b>结余</b>（收入 − 支出）与<b>投资净投入</b>（人民币买入标的 + 购汇 − 卖出部分的成本 − 结汇本金）。点任一数字下钻到构成它的流水或交易。</p></div>
+<p class="dek"><b>投资净投入</b> = 人民币买入标的 + 购汇 − 卖出部分的成本 − 结汇本金。点任一数字可下钻到构成它的流水或交易。</p></div>
 <span class="mut" style="font-size:12px;display:flex;gap:14px;align-items:center"><i style="display:inline-block;width:12px;height:12px;background:#141414"></i>结余<i style="display:inline-block;width:12px;height:12px;background:#A8A39A"></i>投资净投入</span></div>
 ${ms.length ? `<div style="border-top:5px solid #141414;padding-top:16px">${cfChart(d.rows)}</div>
 <div class="scroll" style="margin-top:12px"><div style="min-width:${300 + ms.length * 84}px">
@@ -203,7 +202,7 @@ ${ms.length ? `<div style="border-top:5px solid #141414;padding-top:16px">${cfCh
 <div class="er" style="${grid};align-items:center"><span style="font-weight:700">结余</span>${d.rows.map(r => c(r.balance, `balance|${r.month}`, 0)).join('')}${c(d.total.balance, 'balance|all', 0)}</div>
 <div class="er" style="${grid};align-items:center;border-bottom:6px double #141414"><span style="font-weight:700">投资净投入</span>${d.rows.map(r => c(r.inv, `inv|${r.month}`, 2)).join('')}${c(d.total.inv, 'inv|all', 2)}</div>
 </div></div>` : '<div class="empty" style="border-top:5px solid #141414">这一年还没有流水或交易。</div>'}
-<div class="cols" style="padding-top:26px"><section class="main" id="drill">${CF.drill ? '<div class="loading">加载中…</div>' : '<span class="mut" style="font-size:13px">点上面任一数字，查看构成它的流水或交易。</span>'}</section>
+<div class="cols" style="padding-top:26px"><section class="main" id="drill">${CF.drill ? '<div class="loading">加载中…</div>' : ''}</section>
 <aside class="side" style="gap:10px"><div class="sec s3"><b>不计入的</b></div>
 <p style="margin:0;font-size:13px;line-height:1.7">转账（还款、余额宝转入转出、借出与收回）、外币资产之间的买卖、期初录入的持仓与外币。外币标的卖出的盈利只增加外币余额，结汇时才以汇兑损益进入结余。</p></aside></div>
 </div></div>`;

@@ -57,10 +57,10 @@ function draw() {
 <div class="lhd"><h1 class="h1">盘点 · ${monthLabel(S.month)}</h1>
 <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-end">
 <label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">盘点月份<select name="month" style="font-size:16px;font-weight:600;color:#141414;height:34px;border-bottom:1px solid #141414;font-family:var(--f-mono)">
-${d.months.map(m => `<option value="${m.month}"${m.month === S.month ? ' selected' : ''}>${monthLabel(m.month)}${m.month === d.default_month ? '（默认上一个月）' : ''}${m.snapshot ? ' · 已有快照' : m.month !== d.default_month ? ' · 未盘点，补录' : ''}</option>`).join('')}</select></label>
+${d.months.map(m => `<option value="${m.month}"${m.month === S.month ? ' selected' : ''}>${monthLabel(m.month)}${m.snapshot ? ' · 已有快照' : m.month !== d.default_month ? ' · 未盘点，补录' : ''}</option>`).join('')}</select></label>
 <label style="display:flex;flex-direction:column;gap:4px;font-size:12px" class="mut">盘点日期<input class="f" type="date" name="date" value="${S.date}" style="width:150px;font-size:16px;font-weight:600;height:34px"></label></div></div>
-${d.snapshot ? `<div class="banner" style="margin-top:12px"><span><b>${mShort(S.month)}已有快照</b>（${dDot(d.snapshot.date)} 盘点）。修改后「完成盘点」会先自动备份，再覆盖这份快照。</span></div>` : ''}
-${isHist && !d.snapshot ? `<div class="banner" style="margin-top:12px"><span><b>补录历史月份</b>：没有价格历史，取到的是现在的最新价。请按当时的价格与汇率修改，或手填。</span></div>` : ''}
+${d.snapshot ? `<div class="banner" style="margin-top:12px"><span><b>${mShort(S.month)}已有快照</b>（${dDot(d.snapshot.date)} 盘点）。</span></div>` : ''}
+${isHist && !d.snapshot ? `<div class="banner" style="margin-top:12px"><span><b>补录历史月份</b>：取到的是现在的价格，请按当时的价格与汇率修改。</span></div>` : ''}
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 24px;padding:12px 0;border-bottom:1px solid #141414;font-size:13px"><b>即期汇率</b>
 <label class="mono" style="display:flex;gap:6px;align-items:center">USD <input class="f r${S.rates.USD === '' ? ' todo' : ''}" name="rate-USD" value="${esc(S.rates.USD)}" placeholder="待填" style="width:80px"></label>
 <label class="mono" style="display:flex;gap:6px;align-items:center">HKD <input class="f r${S.rates.HKD === '' ? ' todo' : ''}" name="rate-HKD" value="${esc(S.rates.HKD)}" placeholder="待填" style="width:80px"></label>
@@ -71,7 +71,7 @@ ${isHist && !d.snapshot ? `<div class="banner" style="margin-top:12px"><span><b>
 <section style="flex:1 1 560px;min-width:0;display:flex;flex-direction:column">${posPanel()}</section>
 </div></div>
 <div class="dock"><span><span class="k">已填部分 · 净资产</span><span class="v" id="dock-net">${wan(c.net)} 万</span></span><span><span class="k">待填</span><span class="v" id="dock-todo">${c.todo} 格</span></span><span style="flex:1"></span>
-<span class="mut" style="font-size:12px;max-width:300px">完成后存为 ${mShort(S.month)}快照；同月再盘点会先自动备份再覆盖，存档后每格仍可直接改。</span>
+<span class="mut" style="font-size:12px;max-width:300px">完成后存为 ${mShort(S.month)}快照；已有快照会先备份再覆盖。</span>
 <button type="button" class="btn pri" data-act="save" data-once="stocktake-save"${busyAttr('stocktake-save')} style="height:50px;padding:0 30px">完成盘点</button></div></div>`;
   bind();
 }
@@ -105,7 +105,7 @@ ${S.menu === a.id ? menu(a) : ''}</div>`;
 <span class="mut" style="font-size:12px;text-align:right">负债填负数</span><button type="button" class="lk" data-act="add" style="justify-content:center">添加</button></div>`;
   }
   const dis = S.d.disabled;
-  h += `<div style="display:flex;flex-wrap:wrap;gap:8px 22px;padding-top:10px;font-size:13px"><button type="button" class="lk" data-act="new">${S.adding ? '收起新增' : '+ 新增手填账户'}</button><span class="mut">⋯ 菜单：改名称 · 改币种 · 停用</span><span style="flex:1"></span>
+  h += `<div style="display:flex;flex-wrap:wrap;gap:8px 22px;padding-top:10px;font-size:13px"><button type="button" class="lk" data-act="new">${S.adding ? '收起新增' : '+ 新增手填账户'}</button><span style="flex:1"></span>
 ${dis.length ? `<button type="button" class="lk" data-act="disabled" style="color:#4A4740;font-weight:500">已停用 ${dis.length} 个 ${S.showDisabled ? '▾' : '▸'}</button>` : ''}</div>`;
   if (S.showDisabled) h += dis.map(a => `<div class="mr" style="color:#4A4740"><span>${esc(a.name)}</span><span class="mono" style="font-size:12px">${CUR_CODE[a.currency]}</span><span></span><span></span><span></span><button type="button" class="lk" data-enable="${a.id}" style="font-size:12px">启用</button></div>`).join('');
   return h + '</div></div>';
@@ -140,7 +140,7 @@ function posPanel() {
     }
   }
   if (!S.pos.length) h += `<div class="empty">这个月末没有持仓标的。标的在 <a href="#/instrument">持仓 · 新增标的</a> 录入。</div>`;
-  return h + `</div></div><span class="mut" style="font-size:12px;margin-top:10px">股票、场内 ETF、加密货币取最新成交价（休市取最近收盘）；场外基金取最新一期净值。取不到的格留空待手填，不影响其他格。</span>`;
+  return h + '</div></div>';
 }
 
 const SRC_FAIL = { fund: '天天基金未返回', crypto: 'OKX 未返回' };

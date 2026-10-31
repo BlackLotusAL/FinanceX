@@ -36,7 +36,7 @@ function draw() {
   // 按这笔交易日期时的持仓判断（补录、修改旧交易时与当前持仓不同）
   const heldThen = pv?.result?.qty_before ?? pv?.before?.qty;
   const over = sell && it && heldThen !== undefined && parseNum(f.qty) > heldThen + 1e-9;
-  S.root.innerHTML = `<div class="pg">${backStrip('#/holdings', '持仓', '录入交易')}<div class="wrap">
+  S.root.innerHTML = `<div class="pg">${backStrip('#/holdings', '持仓', '')}<div class="wrap">
 <div class="lhd"><h1 class="h1">${S.id ? '修改' : '记'}一笔${f.opening ? '期初持仓' : sell ? '卖出' : '买入'}</h1>${S.id ? '<button type="button" class="lk" data-act="del" style="color:#B3261E">删除这笔交易</button>' : ''}</div>
 ${!S.insts.length ? '<div class="empty">还没有标的。先 <a href="#/instrument">新增标的</a>。</div>' : `
 <div class="cols" style="gap:48px;padding-top:18px">
@@ -49,12 +49,9 @@ ${!S.insts.length ? '<div class="empty">还没有标的。先 <a href="#/instrum
 <label class="fld">${f.opening ? '总成本' : sell ? '实际到手金额' : '总金额'}（${s.trim()}）<input type="text" name="amount" inputmode="decimal" value="${esc(f.amount)}" style="text-align:right"><span class="h">${sell ? '已扣除手续费和税费' : f.opening ? (it?.category === 'crypto' ? '参照投资明细子表' : '参照券商 App') : '含手续费的总支出'}</span></label>
 </div>
 ${result()}
-<div style="border-top:1px solid #141414;padding-top:14px;display:flex;flex-direction:column;gap:10px">
-${sell ? `<span style="font-size:13px;font-weight:700">切到「买入」时</span>
-<span class="mut" style="font-size:13px;line-height:1.6">填数量与总金额（含手续费的总支出）。勾选「期初持仓」可录入启用前已有的持仓：填数量与总成本，股票、基金参照券商 App，加密货币参照投资明细子表；期初买入不计入投资净投入。</span>` :
-    '<span class="mut" style="font-size:13px;line-height:1.6">启用前已有的持仓录为一笔期初买入：填数量与总成本（股票、基金参照券商 App，加密货币参照投资明细子表），不计入投资净投入。</span>'}
-<label class="chk"${sell ? ' style="color:#4A4740"' : ''}><input type="checkbox" name="opening"${f.opening && !sell ? ' checked' : ''}${sell ? ' disabled' : ''}> 期初持仓${sell ? '（仅买入可用）' : ''}</label>
-</div></section>
+${sell ? '' : `<div style="border-top:1px solid #141414;padding-top:14px">
+<label class="chk"><input type="checkbox" name="opening"${f.opening ? ' checked' : ''}> 期初持仓 <span class="mut">· 启用前已有，不计入投资净投入</span></label>
+</div>`}</section>
 <aside class="side" style="gap:26px;padding-left:28px">${aside(it)}</aside></div>`}
 </div>
 ${S.insts.length ? dock() : ''}</div>`;
@@ -89,17 +86,12 @@ function aside(it) {
 <div class="kv"><span>已实现盈亏 · 累计</span><span class="${(b ? b.realized : it.realized) >= 0 ? 'up' : 'dn'}">${sgn(b ? b.realized : it.realized)}</span></div></div>
 ${a ? `<div class="panel"><div class="sec s3"><b>${S.f.kind === 'sell' ? '卖出' : '买入'}后</b></div>
 <div class="kv"><span>持仓数量</span><span>${a.qty <= 1e-9 ? '0 · 已清仓' : qty(a.qty)}</span></div>
-<div class="kv"><span>平均成本</span><span>${Math.abs(a.avg - b.avg) < 1e-9 ? '<span class="mut">不变</span>' : fmt(a.avg, 3)}</span></div>
-<div class="kv"><span>已实现盈亏 · 累计</span><span class="${a.realized >= 0 ? 'up' : 'dn'}">${sgn(a.realized)}</span></div>
-<div class="kv"><span>${+S.f.date.slice(5, 7)} 月投资净投入</span><span class="${cls2(pv.result.inv)}">${sgn(pv.result.inv)}</span></div></div>` : ''}
+<div class="kv"><span>已实现盈亏 · 累计</span><span class="${a.realized >= 0 ? 'up' : 'dn'}">${sgn(a.realized)}</span></div></div>` : ''}
 <div class="panel"><div class="sec s3"><b>这只标的的交易</b></div>${trades || '<div class="kv"><span class="mut">还没有交易</span><span></span></div>'}</div>`;
 }
-const cls2 = v => (v > 0 ? 'up' : v < 0 ? 'dn' : 'mut');
 
 function dock() {
-  const r = S.pv?.result;
-  return `<div class="dock">${S.f.kind === 'sell' ? `<span><span class="k">已实现盈亏</span><span class="v ${r ? (r.realized >= 0 ? 'up' : 'dn') : ''}">${r ? sgn(r.realized) : '—'}</span></span>` : ''}
-<span><span class="k">投资净投入</span><span class="v">${r ? sgn(r.inv) : '—'}</span></span><span style="flex:1"></span>
+  return `<div class="dock"><span style="flex:1"></span>
 <a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save" data-once="trade-save"${busyAttr('trade-save')} style="padding:0 30px">保存交易</button></div>`;
 }
 
