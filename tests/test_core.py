@@ -117,6 +117,11 @@ class MonthlyExample(unittest.TestCase):
         self.assertEqual(sept["inv"], 9143)
         realized = [f for f in flows if f["source"] == "sell"]
         self.assertEqual(realized[0]["amount"], 600)
+        # 桑基图的分项：收入按一级分类，消费不含工资减扣，转账不计入
+        fl = cf["flow"]
+        self.assertEqual(fl["income_l1"], {"工资收入": 20000, "投资收益": 600})
+        self.assertEqual(fl["consume_l1"], {"餐饮食品": 6000})
+        self.assertEqual((fl["income"], fl["deduct"], fl["consume"]), (20600, 4000, 6000))
 
     def test_foreign_instrument_sell_no_flow(self):
         conn = fresh()

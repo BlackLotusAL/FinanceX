@@ -151,6 +151,7 @@ input[type=checkbox]:disabled{opacity:.4;cursor:not-allowed}
 .er .cv{padding:2px 4px;min-height:0;line-height:1.5}
 .cv:hover{outline:1px solid var(--ink)}.cv.on{background:var(--ink);color:var(--bg);outline:2px solid var(--ink)}
 .cv.blank{text-decoration:none;cursor:default}.cv.blank:hover{outline:0}
+.chart text{font-family:var(--f-mono);font-size:12px;fill:var(--mut)}.chart text.k{font-family:var(--f-sans);font-size:13px;font-weight:700;fill:var(--ink)}.chart text.k tspan{font-family:var(--f-mono);font-size:12px;font-weight:400;fill:var(--mut)}.chart text.t{font-weight:600;fill:var(--ink)}.chart .halo{paint-order:stroke;stroke:var(--bg);stroke-width:5px;stroke-linejoin:round}
 .dr{display:grid;grid-template-columns:52px 64px minmax(0,1fr) 110px;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px dotted var(--dot);font-size:13px}.dr>span:last-child{font-family:var(--f-mono);text-align:right}
 .bar{height:10px;background:var(--bar);position:relative}.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--ink)}
 

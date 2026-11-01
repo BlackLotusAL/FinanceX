@@ -58,8 +58,102 @@ ${rows}
   root.querySelector('[name="month"]')?.addEventListener('change', e => go(`#/bs?month=${e.target.value}`));
 }
 
+// ---------- 图表公用 ----------
+const L1_COLOR = { 住房物业: '#3A55C4', 餐饮食品: '#D29B38', 交通出行: '#3E9CCB', 实体商品: '#9A4F94',
+  数字订阅: '#2E8B6E', 生活服务: '#C25B7A', 健康保障: '#7A8B2E', 其他消费: '#B0703A' };
+const OTHER = '其他消费';
+const n0 = v => fmt(v, 0);
+
+// 消费支出取金额最大的 4 个一级分类，其余（含「其他消费」与未分类）并为「其他消费」
+function spendGroups(totals) {
+  const top = Object.entries(totals).filter(([k, v]) => k !== OTHER && k !== '未分类' && v > 0.5)
+    .sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k]) => k);
+  return top;
+}
+
 // ---------- 利润表 ----------
 let IS = { open: new Set(), drill: null };
+
+function median(a) {
+  const s = [...a].sort((x, y) => x - y), h = s.length >> 1;
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+}
+
+function isChart(d) {
+  const ms = d.months, cats = d.categories;
+  const val = (id, m) => (d.cells[id] || [])[m - 1] || 0;
+  const l1Of = (l1, m) => cats.filter(c => c.l1 === l1).reduce((a, c) => a + val(c.id, m), 0);
+  const consumeL1 = [...new Set(cats.filter(c => c.kind === 'expense' && c.l1 !== '工资减扣').map(c => c.l1))];
+  const totals = Object.fromEntries(consumeL1.map(l1 => [l1, ms.reduce((a, m) => a + l1Of(l1, m), 0)]));
+  const top = spendGroups(totals);
+  // 每段：名称、颜色、各月金额；「其他消费」= 消费支出 − 前 4 类，未分类也算在里面
+  let groups = top.map(l1 => ({ name: l1, l1, color: L1_COLOR[l1] || '#6E6A62', vals: ms.map(m => l1Of(l1, m)) }));
+  const other = { name: OTHER, color: L1_COLOR[OTHER], vals: ms.map((m, i) => d.summary[m].consume - groups.reduce((a, g) => a + g.vals[i], 0)) };
+  if (other.vals.some(v => v > 0.5)) groups.push(other);
+  // 波动小的放下面、波动大的放上面，尖峰更容易看出来
+  const cv = g => { const mean = g.vals.reduce((a, b) => a + b, 0) / ms.length; if (mean <= 0) return 0; return Math.sqrt(g.vals.reduce((a, v) => a + (v - mean) ** 2, 0) / ms.length) / mean; };
+  groups.sort((a, b) => cv(a) - cv(b));
+  const deduct = { name: '工资减扣', l1: '工资减扣', color: 'url(#hd)', vals: ms.map(m => d.summary[m].deduct) };
+  const stack = deduct.vals.some(v => v > 0.5) ? [deduct, ...groups] : groups;
+  if (!stack.length) return '';
+
+  const W = 1344, X0 = 56, BASE = 290, PLOT = 240;
+  const tot = ms.map((m, i) => stack.reduce((a, g) => a + Math.max(g.vals[i], 0), 0));
+  const max = Math.max(...tot, 1);
+  const k = PLOT / max;
+  const step = [1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000].find(s => max / s <= 4) || 1000000;
+  const tick = v => v >= 10000 ? `${+(v / 10000).toFixed(1)} 万` : n0(v);
+  const slot = (W - X0) / ms.length, bw = Math.min(50, slot * 0.5);
+  let s = '';
+  for (let v = step; v <= max; v += step) {
+    const y = BASE - v * k;
+    s += `<line x1="${X0}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="#8A877F" stroke-dasharray="1 3"></line><text x="${X0 - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${tick(v)}</text>`;
+  }
+  const segs = []; // 记下每段的位置，供标注用
+  ms.forEach((m, i) => {
+    const x = X0 + slot * i + (slot - bw) / 2;
+    let y = BASE;
+    for (const g of stack) {
+      const v = Math.max(g.vals[i], 0);
+      if (v < 0.5) continue;
+      const h = v * k;
+      s += `<rect x="${x.toFixed(1)}" y="${(y - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(h - 2, 0.5).toFixed(1)}" fill="${g.color}"><title>${m} 月 · ${esc(g.name)} ${n0(v)}</title></rect>`;
+      segs.push({ g, i, m, x, mid: y - h / 2 - 1, v });
+      y -= h;
+    }
+    s += `<text class="t" x="${(x + bw / 2).toFixed(1)}" y="${(y - 10).toFixed(1)}" text-anchor="middle">${n0(tot[i])}</text>`;
+    s += `<text x="${(x + bw / 2).toFixed(1)}" y="310" text-anchor="middle">${m} 月</text>`;
+  });
+  s += `<line x1="${X0}" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="#141414" stroke-width="2"></line>`;
+
+  // 标注：某月某段明显高于该段的中位数（≥ 2 倍，且超出量够大），最多两处
+  if (ms.length >= 3) {
+    const meds = new Map(stack.map(g => [g, median(g.vals)]));
+    const hits = segs.map(p => ({ ...p, ex: p.v - meds.get(p.g) }))
+      .filter(p => p.v >= 2 * meds.get(p.g) && p.ex >= max * 0.1)
+      .sort((a, b) => b.ex - a.ex).slice(0, 2);
+    for (const p of hits) {
+      let name = p.g.name, v = p.v;
+      if (p.g.l1) { // 超出部分主要来自某个二级分类时，标这个二级分类
+        const kids = cats.filter(c => c.l1 === p.g.l1).map(c => { const vs = ms.map(m => val(c.id, m)); return { c, v: vs[p.i], ex: vs[p.i] - median(vs) }; });
+        const best = kids.sort((a, b) => b.ex - a.ex)[0];
+        if (best && best.ex >= p.ex * 0.6) { name = best.c.name; v = best.v; }
+      }
+      const right = p.i < ms.length - 1, edge = right ? p.x + bw + 3 : p.x - 3, dir = right ? 1 : -1;
+      const tx = edge + dir * 13, an = right ? 'start' : 'end';
+      s += `<line x1="${edge.toFixed(1)}" y1="${p.mid.toFixed(1)}" x2="${(edge + dir * 9).toFixed(1)}" y2="${p.mid.toFixed(1)}" stroke="#141414"></line>`
+        + `<text class="k halo" x="${tx.toFixed(1)}" y="${(p.mid + 1).toFixed(1)}" text-anchor="${an}">${esc(name)}</text>`
+        + `<text class="halo" x="${tx.toFixed(1)}" y="${(p.mid + 17).toFixed(1)}" text-anchor="${an}">${n0(v)}</text>`;
+    }
+  }
+  const sw = (c, hatch) => `<i style="display:inline-block;width:12px;height:12px;background:${hatch ? 'repeating-linear-gradient(45deg,#6E6A62 0 2px,#B9B5AC 2px 6px)' : c}"></i>`;
+  const legend = [...stack].reverse().map(g => `<span style="display:inline-flex;align-items:center;gap:6px">${sw(g.color, g === deduct)}${esc(g.name)} <span class="mono mut">${n0(g.vals.reduce((a, b) => a + b, 0))}</span></span>`).join('');
+  const period = ms.length === 1 ? '1 月' : `1–${ms[ms.length - 1]} 月`;
+  return `<div style="border-top:5px solid #141414;padding-top:14px"><div class="sec s3" style="border-top:0;padding-top:0"><b>每月支出构成</b><span class="mono mut" style="font-size:12px">按一级分类 · 元 · 悬停查看各段</span></div>
+<div style="display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;padding:12px 0 4px">${legend}</div>
+<div class="scroll"><div style="min-width:900px"><svg class="chart" viewBox="0 0 ${W} 330" width="100%" role="img" aria-label="${esc(d.year)} 年 ${period}每月支出构成分段柱状图，按一级分类堆叠" style="display:block;height:auto"><defs><pattern id="hd" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#B9B5AC"></rect><line x1="0" y1="0" x2="0" y2="6" stroke="#6E6A62" stroke-width="2"></line></pattern></defs>${s}</svg></div></div></div>
+<div style="border-top:2px solid #141414;margin-top:18px"></div>`;
+}
 
 async function renderIS(root) {
   const q = qs();
@@ -112,7 +206,7 @@ function drawIS() {
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">利润表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">${d.year === new Date().getFullYear().toString() ? '今年' : esc(d.year) + ' 年'}结余 ${fmt(t.balance, 0)}${t.rate !== null ? `，储蓄率 ${(t.rate * 100).toFixed(1)}%` : ''}</h1>
 <p class="dek">只计人民币已实现收支；外币收益与浮动盈亏只在净资产里体现。</p></div>
 <span class="mut" style="font-size:12px">点 ▸ 展开二级分类</span></div>
-<div style="border-top:5px solid #141414"></div>
+${(ms.length && isChart(d)) || '<div style="border-top:5px solid #141414"></div>'}
 ${ms.length ? `<div class="scroll"><div style="min-width:${300 + ms.length * 80}px">${h}</div></div>` : '<div class="empty">这一年还没有流水。</div>'}
 <p class="mut" style="font-size:12px;margin:12px 0 0">点任一数字可查看构成它的流水。</p>
 <div id="drill"></div></div></div>`;
@@ -167,23 +261,71 @@ async function renderCF(root) {
   drawCF();
 }
 
-function cfChart(rows) {
-  const W = 920, H = 190, n = rows.length || 1, slot = W / n;
-  const maxP = Math.max(1, ...rows.flatMap(r => [r.balance, r.inv]));
-  const maxN = Math.max(0, ...rows.flatMap(r => [-r.balance, -r.inv]));
-  const base = (maxP / (maxP + maxN)) * (H - 20) + 4;
-  const scale = (H - 24) / (maxP + maxN);
+// 桑基图：来源（收入一级分类）→ 收入 → 工资减扣 / 消费支出 / 结余 → 消费明细 / 投资净投入 / 未投资结余
+function cfSankey(d, period) {
+  const f = d.flow, inv = d.total.inv;
+  const saving = f.income - f.deduct - f.consume;
+  const pos = v => v > 0.5;
+  const src = Object.entries(f.income_l1).filter(([, v]) => pos(v)).sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v }));
+  if (saving < -0.5) src.push({ name: '动用存量', v: -saving }); // 花的比挣的多
+  const T = src.reduce((a, s) => a + s.v, 0);
+  if (!pos(T)) return '';
+
+  const H = 400, TOP = 30, BOT = 395, k = 300 / T;
+  const X = [170, 520, 870, 1150], NW = 10;
+  const GREY = ['#A8A39A', '.38'], BLUE = ['#24399A', '.42'], PALE = ['#24399A', '.22'];
+  // 列内纵向居中排布；gaps[i] 是第 i 个节点上方的间距
+  const place = (nodes, gaps) => {
+    const total = nodes.reduce((a, n, i) => a + n.v * k + (i ? gaps[i] : 0), 0);
+    let y = TOP + (BOT - TOP - total) / 2;
+    nodes.forEach((n, i) => { if (i) y += gaps[i]; n.y = y; n.h = n.v * k; n.out = y; n.in = y; y += n.h; });
+  };
+  const mid = { name: src.some(s => s.name === '动用存量') ? '支出来源' : '收入', v: T };
+  const c3 = [
+    pos(f.deduct) && { name: '工资减扣', v: f.deduct },
+    pos(f.consume) && { name: '消费支出', v: f.consume, kids: true },
+    pos(saving) && { name: '结余', v: saving, blue: true },
+  ].filter(Boolean);
+  const totals = f.consume_l1;
+  const top = spendGroups(totals);
+  const c4 = top.map(name => ({ name, v: totals[name], from: '消费支出' }));
+  const rest = f.consume - c4.reduce((a, n) => a + n.v, 0);
+  if (pos(rest)) c4.push({ name: OTHER, v: rest, from: '消费支出' });
+  if (pos(saving)) {
+    const put = Math.min(Math.max(inv, 0), saving);
+    if (pos(put)) c4.push({ name: '投资净投入', v: put, label: inv, from: '结余', blue: true, c: BLUE });
+    if (pos(saving - put)) c4.push({ name: '未投资结余', v: saving - put, from: '结余', blue: true, c: PALE });
+  }
+  place(src, src.map(() => 18));
+  place([mid], [0]);
+  place(c3, c3.map(() => 22));
+  place(c4, c4.map((n, i) => (i && c4[i - 1].from !== n.from ? 22 : 8)));
+
+  const link = (a, b, v, [col, op], tip) => {
+    const h = v * k, x0 = a.x + NW, x1 = b.x, mx = (x0 + x1) / 2;
+    const y0 = a.out, y1 = b.in; a.out += h; b.in += h;
+    return `<path d="M${x0},${y0.toFixed(1)} C${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1},${y1.toFixed(1)} L${x1},${(y1 + h).toFixed(1)} C${mx},${(y1 + h).toFixed(1)} ${mx},${(y0 + h).toFixed(1)} ${x0},${(y0 + h).toFixed(1)} Z" fill="${col}" fill-opacity="${op}"><title>${esc(tip)} ${n0(v)}</title></path>`;
+  };
+  src.forEach(n => (n.x = X[0])); mid.x = X[1]; c3.forEach(n => (n.x = X[2])); c4.forEach(n => (n.x = X[3]));
   let s = '';
-  rows.forEach((r, i) => {
-    const x0 = i * slot + slot / 2 - 22;
-    [[r.balance, '#141414', 0], [r.inv, '#A8A39A', 24]].forEach(([v, c, off]) => {
-      const h = Math.abs(v) * scale;
-      s += `<rect x="${(x0 + off).toFixed(1)}" y="${(v >= 0 ? base - h : base).toFixed(1)}" width="20" height="${Math.max(h, 0.5).toFixed(1)}" fill="${c}"></rect>`;
-    });
-  });
-  s += `<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="#141414" stroke-width="1.5" vector-effect="non-scaling-stroke"></line>`;
-  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="各月结余与投资净投入柱状图" style="display:block">${s}</svg>
-<div style="position:relative;height:18px">${rows.map((r, i) => `<span style="position:absolute;left:${((i + 0.5) / n * 100).toFixed(2)}%;transform:translateX(-50%);font-size:12px" class="mono mut">${r.month}</span>`).join('')}</div>`;
+  for (const n of src) s += link(n, mid, n.v, GREY, `${n.name} → ${mid.name}`);
+  for (const n of c3) s += link(mid, n, n.v, n.blue ? BLUE : GREY, `${mid.name} → ${n.name}`);
+  for (const n of c4) { const p = c3.find(x => x.name === n.from); s += link(p, n, n.v, n.c || GREY, `${n.from} → ${n.name}`); }
+  const rect = n => `<rect x="${n.x}" y="${n.y.toFixed(1)}" width="${NW}" height="${Math.max(n.h, 1).toFixed(1)}" fill="${n.blue ? '#24399A' : '#141414'}"><title>${esc(n.name)} ${n0(n.label ?? n.v)}</title></rect>`;
+  s += [...src, mid, ...c3, ...c4].map(rect).join('');
+  // 标签：名称一行、金额一行；小节点的标签往下推，避免重叠
+  const spread = (ys, gap) => { for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i], ys[i - 1] + gap); return ys; };
+  const two = (x, y, anchor, name, val) => `<text class="k halo" x="${x}" y="${(y - 2).toFixed(1)}" text-anchor="${anchor}">${esc(name)}</text><text class="halo" x="${x}" y="${(y + 14).toFixed(1)}" text-anchor="${anchor}">${val}</text>`;
+  spread(src.map(n => n.y + n.h / 2), 34).forEach((y, i) => (s += two(160, y, 'end', src[i].name, n0(src[i].v))));
+  s += `<text class="k" x="${mid.x + NW / 2}" y="${mid.y - 24}" text-anchor="middle">${mid.name}</text><text x="${mid.x + NW / 2}" y="${mid.y - 9}" text-anchor="middle">${n0(T)}</text>`;
+  const share = v => (pos(f.income) ? ` · ${(v / f.income * 100).toFixed(1)}%` : '');
+  spread(c3.map(n => n.y + n.h / 2), 34).forEach((y, i) => (s += two(888, y, 'start', c3[i].name, n0(c3[i].v) + share(c3[i].v))));
+  spread(c4.map(n => n.y + n.h / 2 + 4.5), 16).forEach((y, i) => (s += `<text class="k" x="1168" y="${y.toFixed(1)}">${esc(c4[i].name)}<tspan dx="8">${n0(c4[i].label ?? c4[i].v)}</tspan></text>`));
+  s += `<text x="170" y="14" text-anchor="end" letter-spacing="1">来源</text><text x="880" y="14" letter-spacing="1">去向</text>${c4.length ? '<text x="1160" y="14" letter-spacing="1">明细</text>' : ''}`;
+  s += `<line x1="0" y1="${H - 0.5}" x2="1344" y2="${H - 0.5}" stroke="#141414"></line>`;
+  const aria = `${period}收入去向桑基图：收入 ${n0(f.income)}，其中工资减扣 ${n0(f.deduct)}，消费支出 ${n0(f.consume)}，结余 ${n0(saving)}${inv > 0 ? `；投资净投入 ${n0(inv)}` : ''}`;
+  return `<div style="border-top:5px solid #141414;padding-top:14px"><div class="sec s3" style="border-top:0;padding-top:0"><b>${period} · 钱去了哪里</b><span class="mono mut" style="font-size:12px">元 · 色带宽度 = 金额</span></div>
+<div class="scroll" style="margin-top:10px"><div style="min-width:980px"><svg class="chart" viewBox="0 0 1344 ${H}" width="100%" role="img" aria-label="${esc(aria)}" style="display:block;height:auto;overflow:visible">${s}</svg></div></div></div>`;
 }
 
 function drawCF() {
@@ -195,9 +337,9 @@ function drawCF() {
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:14px;padding:20px 0 14px">
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">现金流量表 · ${period}</span><h1 class="h1" style="font-size:40px;line-height:1.1">结余 ${fmt(d.total.balance, 0)}，其中 ${fmt(Math.max(d.total.inv, 0), 0)} 投向了投资</h1>
 <p class="dek"><b>投资净投入</b> = 人民币买入标的 + 购汇 − 卖出部分的成本 − 结汇本金。点任一数字可下钻到构成它的流水或交易。</p></div>
-<span class="mut" style="font-size:12px;display:flex;gap:14px;align-items:center"><i style="display:inline-block;width:12px;height:12px;background:#141414"></i>结余<i style="display:inline-block;width:12px;height:12px;background:#A8A39A"></i>投资净投入</span></div>
-${ms.length ? `<div style="border-top:5px solid #141414;padding-top:16px">${cfChart(d.rows)}</div>
-<div class="scroll" style="margin-top:12px"><div style="min-width:${300 + ms.length * 84}px">
+<span class="mut" style="font-size:12px">悬停色带查看金额</span></div>
+${ms.length ? `${cfSankey(d, ms.length === 1 ? '1 月' : `1–${ms[ms.length - 1]} 月`) || '<div style="border-top:5px solid #141414"></div>'}
+<div class="scroll" style="margin-top:22px"><div style="min-width:${300 + ms.length * 84}px">
 <div class="er mono" style="${grid};font-size:12px;color:#4A4740;border-bottom:2px solid #141414"><span>项目</span>${ms.map(m => `<span>${m} 月</span>`).join('')}<span>1–${ms[ms.length - 1]} 月</span></div>
 <div class="er" style="${grid};align-items:center"><span style="font-weight:700">结余</span>${d.rows.map(r => c(r.balance, `balance|${r.month}`, 0)).join('')}${c(d.total.balance, 'balance|all', 0)}</div>
 <div class="er" style="${grid};align-items:center;border-bottom:6px double #141414"><span style="font-weight:700">投资净投入</span>${d.rows.map(r => c(r.inv, `inv|${r.month}`, 2)).join('')}${c(d.total.inv, 'inv|all', 2)}</div>
