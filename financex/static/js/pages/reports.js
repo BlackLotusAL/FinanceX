@@ -266,7 +266,13 @@ function cfSankey(d, period) {
   const f = d.flow, inv = d.total.inv;
   const saving = f.income - f.deduct - f.consume;
   const pos = v => v > 0.5;
-  const src = Object.entries(f.income_l1).filter(([, v]) => pos(v)).sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v }));
+  // 每一列合计相等：来源 = 收入为正的分类 + 退款净额 + 动用存量；
+  // 去向 = 工资减扣 + 消费支出（都取正数部分）+ 亏损（收入为负的分类）+ 结余
+  const inc = Object.entries(f.income_l1);
+  const src = inc.filter(([, v]) => pos(v)).sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v }));
+  const losses = inc.filter(([, v]) => v < -0.5).map(([name, v]) => ({ name: `${name}（亏损）`, v: -v }));
+  const refund = Math.max(-f.deduct, 0) + Math.max(-f.consume, 0); // 退款多于支出时，净额是流入
+  if (pos(refund)) src.push({ name: '退款净额', v: refund });
   if (saving < -0.5) src.push({ name: '动用存量', v: -saving }); // 花的比挣的多
   const T = src.reduce((a, s) => a + s.v, 0);
   if (!pos(T)) return '';
@@ -280,17 +286,22 @@ function cfSankey(d, period) {
     let y = TOP + (BOT - TOP - total) / 2;
     nodes.forEach((n, i) => { if (i) y += gaps[i]; n.y = y; n.h = n.v * k; n.out = y; n.in = y; y += n.h; });
   };
-  const mid = { name: src.some(s => s.name === '动用存量') ? '支出来源' : '收入', v: T };
+  const mid = { name: src.length === inc.filter(([, v]) => pos(v)).length ? '收入' : '来源合计', v: T };
   const c3 = [
     pos(f.deduct) && { name: '工资减扣', v: f.deduct },
-    pos(f.consume) && { name: '消费支出', v: f.consume, kids: true },
+    pos(f.consume) && { name: '消费支出', v: f.consume },
+    ...losses,
     pos(saving) && { name: '结余', v: saving, blue: true },
   ].filter(Boolean);
-  const totals = f.consume_l1;
-  const top = spendGroups(totals);
-  const c4 = top.map(name => ({ name, v: totals[name], from: '消费支出' }));
-  const rest = f.consume - c4.reduce((a, n) => a + n.v, 0);
-  if (pos(rest)) c4.push({ name: OTHER, v: rest, from: '消费支出' });
+  // 消费明细只在各项能加回消费支出时画（退款多的分类可能让「其他」为负，那就不拆）
+  let c4 = [];
+  if (pos(f.consume)) {
+    const totals = f.consume_l1;
+    c4 = spendGroups(totals).map(name => ({ name, v: totals[name], from: '消费支出' }));
+    const rest = f.consume - c4.reduce((a, n) => a + n.v, 0);
+    if (rest < -0.5) c4 = [];
+    else if (pos(rest)) c4.push({ name: OTHER, v: rest, from: '消费支出' });
+  }
   if (pos(saving)) {
     const put = Math.min(Math.max(inv, 0), saving);
     if (pos(put)) c4.push({ name: '投资净投入', v: put, label: inv, from: '结余', blue: true, c: BLUE });
