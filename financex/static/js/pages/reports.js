@@ -110,6 +110,7 @@ function isChart(d) {
     s += `<line x1="${X0}" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="#8A877F" stroke-dasharray="1 3"></line><text x="${X0 - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${tick(v)}</text>`;
   }
   const segs = []; // 记下每段的位置，供标注用
+  let refunds = false;
   ms.forEach((m, i) => {
     const x = X0 + slot * i + (slot - bw) / 2;
     let y = BASE;
@@ -121,7 +122,13 @@ function isChart(d) {
       segs.push({ g, i, m, x, mid: y - h / 2 - 1, v });
       y -= h;
     }
-    s += `<text class="t" x="${(x + bw / 2).toFixed(1)}" y="${(y - 10).toFixed(1)}" text-anchor="middle">${n0(tot[i])}</text>`;
+    // 退款让某些分类当月为负：从柱顶盖掉这部分，实心部分 = 表格里的支出合计
+    const net = d.summary[m].expense, off = tot[i] - Math.max(net, 0);
+    if (off > 0.5) {
+      refunds = true;
+      s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(off * k).toFixed(1)}" fill="#E9E7E1" fill-opacity=".8" stroke="#141414" stroke-dasharray="3 2"><title>${m} 月 · 退款冲减 ${fmt(-off, 0)}</title></rect>`;
+    }
+    s += `<text class="t" x="${(x + bw / 2).toFixed(1)}" y="${(y - 10).toFixed(1)}" text-anchor="middle">${n0(net)}</text>`;
     s += `<text x="${(x + bw / 2).toFixed(1)}" y="310" text-anchor="middle">${m} 月</text>`;
   });
   s += `<line x1="${X0}" y1="${BASE}" x2="${W}" y2="${BASE}" stroke="#141414" stroke-width="2"></line>`;
@@ -147,7 +154,8 @@ function isChart(d) {
     }
   }
   const sw = (c, hatch) => `<i style="display:inline-block;width:12px;height:12px;background:${hatch ? 'repeating-linear-gradient(45deg,#6E6A62 0 2px,#B9B5AC 2px 6px)' : c}"></i>`;
-  const legend = [...stack].reverse().map(g => `<span style="display:inline-flex;align-items:center;gap:6px">${sw(g.color, g === deduct)}${esc(g.name)} <span class="mono mut">${n0(g.vals.reduce((a, b) => a + b, 0))}</span></span>`).join('');
+  const legend = [...stack].reverse().map(g => `<span style="display:inline-flex;align-items:center;gap:6px">${sw(g.color, g === deduct)}${esc(g.name)} <span class="mono mut">${n0(g.vals.reduce((a, b) => a + b, 0))}</span></span>`).join('')
+    + (refunds ? '<span style="display:inline-flex;align-items:center;gap:6px"><i style="display:inline-block;width:12px;height:12px;border:1px dashed #141414"></i>退款冲减</span>' : '');
   const period = ms.length === 1 ? '1 月' : `1–${ms[ms.length - 1]} 月`;
   return `<div style="border-top:5px solid #141414;padding-top:14px"><div class="sec s3" style="border-top:0;padding-top:0"><b>每月支出构成</b><span class="mono mut" style="font-size:12px">按一级分类 · 元 · 悬停查看各段</span></div>
 <div style="display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;padding:12px 0 4px">${legend}</div>
@@ -304,7 +312,7 @@ function cfSankey(d, period) {
   }
   if (pos(saving)) {
     const put = Math.min(Math.max(inv, 0), saving);
-    if (pos(put)) c4.push({ name: '投资净投入', v: put, label: inv, from: '结余', blue: true, c: BLUE });
+    if (pos(put)) c4.push({ name: '投资净投入', v: put, note: inv - put > 0.5 ? `（另 ${n0(inv - put)} 动用存量）` : '', from: '结余', blue: true, c: BLUE });
     if (pos(saving - put)) c4.push({ name: '未投资结余', v: saving - put, from: '结余', blue: true, c: PALE });
   }
   place(src, src.map(() => 18));
@@ -322,7 +330,7 @@ function cfSankey(d, period) {
   for (const n of src) s += link(n, mid, n.v, GREY, `${n.name} → ${mid.name}`);
   for (const n of c3) s += link(mid, n, n.v, n.blue ? BLUE : GREY, `${mid.name} → ${n.name}`);
   for (const n of c4) { const p = c3.find(x => x.name === n.from); s += link(p, n, n.v, n.c || GREY, `${n.from} → ${n.name}`); }
-  const rect = n => `<rect x="${n.x}" y="${n.y.toFixed(1)}" width="${NW}" height="${Math.max(n.h, 1).toFixed(1)}" fill="${n.blue ? '#24399A' : '#141414'}"><title>${esc(n.name)} ${n0(n.label ?? n.v)}</title></rect>`;
+  const rect = n => `<rect x="${n.x}" y="${n.y.toFixed(1)}" width="${NW}" height="${Math.max(n.h, 1).toFixed(1)}" fill="${n.blue ? '#24399A' : '#141414'}"><title>${esc(n.name)} ${n0(n.v)}${n.note || ''}</title></rect>`;
   s += [...src, mid, ...c3, ...c4].map(rect).join('');
   // 标签：名称一行、金额一行；小节点的标签往下推，避免重叠
   const spread = (ys, gap) => { for (let i = 1; i < ys.length; i++) ys[i] = Math.max(ys[i], ys[i - 1] + gap); return ys; };
@@ -331,7 +339,7 @@ function cfSankey(d, period) {
   s += `<text class="k" x="${mid.x + NW / 2}" y="${mid.y - 24}" text-anchor="middle">${mid.name}</text><text x="${mid.x + NW / 2}" y="${mid.y - 9}" text-anchor="middle">${n0(T)}</text>`;
   const share = v => (pos(f.income) ? ` · ${(v / f.income * 100).toFixed(1)}%` : '');
   spread(c3.map(n => n.y + n.h / 2), 34).forEach((y, i) => (s += two(888, y, 'start', c3[i].name, n0(c3[i].v) + share(c3[i].v))));
-  spread(c4.map(n => n.y + n.h / 2 + 4.5), 16).forEach((y, i) => (s += `<text class="k" x="1168" y="${y.toFixed(1)}">${esc(c4[i].name)}<tspan dx="8">${n0(c4[i].label ?? c4[i].v)}</tspan></text>`));
+  spread(c4.map(n => n.y + n.h / 2 + 4.5), 16).forEach((y, i) => (s += `<text class="k" x="1168" y="${y.toFixed(1)}">${esc(c4[i].name)}<tspan dx="8">${n0(c4[i].v)}${c4[i].note || ''}</tspan></text>`));
   s += `<text x="170" y="14" text-anchor="end" letter-spacing="1">来源</text><text x="880" y="14" letter-spacing="1">去向</text>${c4.length ? '<text x="1160" y="14" letter-spacing="1">明细</text>' : ''}`;
   s += `<line x1="0" y1="${H - 0.5}" x2="1344" y2="${H - 0.5}" stroke="#141414"></line>`;
   const aria = `${period}收入去向桑基图：收入 ${n0(f.income)}，其中工资减扣 ${n0(f.deduct)}，消费支出 ${n0(f.consume)}，结余 ${n0(saving)}${inv > 0 ? `；投资净投入 ${n0(inv)}` : ''}`;
