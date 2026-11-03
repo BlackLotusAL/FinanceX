@@ -117,6 +117,11 @@ class MonthlyExample(unittest.TestCase):
         self.assertEqual(sept["inv"], 9143)
         realized = [f for f in flows if f["source"] == "sell"]
         self.assertEqual(realized[0]["amount"], 600)
+        # 桑基图的分项：收入按一级分类，消费不含工资减扣，转账不计入
+        fl = cf["flow"]
+        self.assertEqual(fl["income_l1"], {"工资收入": 20000, "投资收益": 600})
+        self.assertEqual(fl["consume_l1"], {"餐饮食品": 6000})
+        self.assertEqual((fl["income"], fl["deduct"], fl["consume"]), (20600, 4000, 6000))
 
     def test_foreign_instrument_sell_no_flow(self):
         conn = fresh()
@@ -501,6 +506,41 @@ class HttpGuards(unittest.TestCase):
     def test_report_year_validated(self):
         self.assertEqual(self.req("GET", "/api/is?year=%3Cimg%20src%3Dx%3E"), 400)
         self.assertEqual(self.req("GET", "/api/cf?year=2026"), 200)
+
+    def test_connection_reused(self):
+        """同一连接上连续请求（含被提前拒绝、带请求体的请求）都能正确应答。"""
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        h = {"Host": f"127.0.0.1:{self.port}", "Content-Type": "application/json"}
+        statuses = []
+        for method, path, body in [("GET", "/api/meta", None), ("POST", "/api/is?year=x", '{"a":1}'),
+                                   ("PUT", "/index.html", '{"a":1}'), ("GET", "/api/meta", None)]:
+            c.request(method, path, body=body, headers=h)
+            r = c.getresponse()
+            r.read()
+            statuses.append(r.status)
+        self.assertEqual(statuses, [200, 400, 405, 200])
+        c.close()
+
+    def test_serve_listens_on_ipv6_loopback(self):
+        import socket
+        import threading
+        httpd = server.serve(0)
+        if not httpd.v6:
+            httpd.server_close()
+            self.skipTest("本机没有 IPv6 回环")
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        try:
+            port = httpd.server_address[1]
+            self.assertEqual(httpd.v6.server_address[1], port)
+            s = socket.create_connection(("::1", port), timeout=5)
+            s.sendall(f"GET /api/meta HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n".encode())
+            self.assertTrue(s.recv(64).startswith(b"HTTP/1.1 200"))
+            s.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
 
 
 def make_xlsx(rows):

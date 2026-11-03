@@ -50,7 +50,7 @@ function draw() {
 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
 <div style="display:flex;flex-direction:column;gap:8px"><span class="kick">复制上月流水</span><h1 class="h1" style="font-size:40px">从 ${mShort(S.src)}复制到 ${mShort(S.month)}</h1></div>
 <a href="#/bills/${S.month}" aria-label="关闭" class="x-close">×</a></div>
-<p style="margin:0;padding:14px 0;border-top:5px solid #141414;border-bottom:1px solid #141414;font-size:16px;line-height:1.6">选中的流水复制到 ${mShort(S.month)}<b>同一天</b>；${mShort(S.month)}没有那一天时取月末。复制后金额可直接改，工资、房租这类固定收支用它录入。</p>
+<p style="margin:0;padding:14px 0;border-top:5px solid #141414;border-bottom:1px solid #141414;font-size:16px;line-height:1.6">选中的流水复制到 ${mShort(S.month)}<b>同一天</b>，金额可先改再复制。</p>
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
 <span class="mut" style="font-size:12px;margin-right:6px">${mShort(S.src)} · ${S.items.length} 笔　只看</span>
 ${S.l1s.map(k => chip(k, !S.all && S.chips.has(k))).join('')}${chip('全部分类', S.all)}
@@ -66,8 +66,7 @@ ${rows.map(f => {
 <span>${f.type === 'transfer' ? '转账' : f.category_id ? `${esc(f.l1)} · ${esc(f.cat_name)}` : '未分类'}</span>
 <span><input class="f r${changed ? ' chg' : ''}" type="text" data-f="amt" value="${display({ ...f, amount: amountOf(f) })}" aria-label="${mShort(S.month)}金额">${changed ? `<br><span class="mut" style="font-size:12px">${mShort(S.src)} ${display(f)}</span>` : ''}</span></div>`;
   }).join('') || '<div class="empty">没有符合条件的流水。</div>'}
-</div></div>
-<span class="mut" style="font-size:12px"><span style="display:inline-block;width:18px;border-bottom:2px solid #24399A;vertical-align:middle"></span> 蓝色下划线 = 已改过金额</span>`
+</div></div>`
     : `<div class="empty">${mShort(S.src)}没有可复制的流水。</div>`}
 <div class="foot"><span style="font-size:13px">已选 <b>${picked.length}</b> 笔：收入 <b class="up">${sgn(inc)}</b>，支出 <b class="dn">${sgn(-exp)}</b></span>
 <div style="display:flex;gap:10px"><a href="#/bills/${S.month}" class="btn">取消</a><button type="button" class="btn pri" data-act="go" data-once="copy-go"${picked.length ? busyAttr('copy-go') : ' disabled'}>复制 ${picked.length} 笔到 ${mShort(S.month)}</button></div></div>

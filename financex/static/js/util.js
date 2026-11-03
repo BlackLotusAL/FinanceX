@@ -124,7 +124,7 @@ export function mainStrip() {
   return strip(`<span>${stripDate()}</span>`, `<span>数据仅存本机</span><a href="#/settings">分类与备份</a>`);
 }
 export function backStrip(href, label, title, right) {
-  return strip(`<a href="${href}" class="back">← ${label}</a><span>${title}</span>`, right ?? `<span>${stripDate()}</span>`);
+  return strip(`<a href="${href}" class="back">← ${label}</a>${title ? `<span>${title}</span>` : ''}`, right ?? `<span>${stripDate()}</span>`);
 }
 export function header(active) {
   const a = k => (k === active ? ' class="on"' : '');

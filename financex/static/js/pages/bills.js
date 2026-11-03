@@ -20,10 +20,10 @@ function draw() {
   const rate = s.rate !== null ? `，储蓄率 ${(s.rate * 100).toFixed(1)}%` : '';
   S.root.innerHTML = `<div class="pg">${mainStrip()}<div class="wrap">${header('bills')}
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px;padding:20px 0 14px">
-<div style="display:flex;flex-direction:column;gap:8px"><span class="kick">月度账单 · ${monthLabel(month)}</span>
+<div style="display:flex;flex-direction:column;gap:8px">
 <h1 class="h1" style="font-size:44px;line-height:1.1">${cnMonth(month)}结余 ${fmt(s.balance, 0)}${rate}</h1></div>
 <div style="display:flex;flex-wrap:wrap;gap:22px;align-items:center;font-size:13px;font-weight:700">
-<span style="display:flex;align-items:center;gap:6px"><a href="#/bills/${monthAdd(month, -1)}" aria-label="上一月" class="lk plain" style="font-size:18px;font-weight:400;min-width:32px;justify-content:center">‹</a>${+month.slice(0, 4) !== +today().slice(0, 4) ? month.slice(0, 4) + ' 年 ' : ''}${mShort(month)}<a href="#/bills/${monthAdd(month, 1)}" aria-label="下一月" class="lk plain" style="font-size:18px;font-weight:400;min-width:32px;justify-content:center">›</a></span>
+<span style="display:flex;align-items:center;gap:6px"><a href="#/bills/${monthAdd(month, -1)}" aria-label="上一月" class="lk plain" style="font-size:18px;font-weight:400;min-width:32px;justify-content:center">‹</a>${monthLabel(month)}<a href="#/bills/${monthAdd(month, 1)}" aria-label="下一月" class="lk plain" style="font-size:18px;font-weight:400;min-width:32px;justify-content:center">›</a></span>
 <a class="lk" href="#/copy/${month}">复制上月流水</a><button type="button" class="lk" data-act="new">+ 记一笔</button></div></div>
 <div style="display:flex;flex-wrap:wrap;border-top:5px solid #141414;border-bottom:1px solid #141414">
 <div class="kpi" style="border-left:0;padding-left:0;flex:1 1 150px"><span class="l">收入</span><span class="num" style="font-size:30px">${fmt(s.income, 0)}</span></div>
@@ -42,7 +42,7 @@ ${banner(data.batch)}
 function banner(b) {
   if (!b) return '';
   const srcs = [...new Set(b.files.map(f => SRC_NAME[f.source] || f.source))].join(' / ');
-  return `<div class="banner"><span><b>${dShort(b.created.slice(0, 10))} 导入</b> ${esc(srcs)} ${b.files.length} 份账单，入账 ${b.count} 笔。导入前已自动备份。</span>
+  return `<div class="banner"><span><b>${dShort(b.created.slice(0, 10))} 导入</b> ${esc(srcs)}，入账 ${b.count} 笔，导入前已备份。</span>
 <span style="flex:1"></span><button type="button" class="lk" data-act="undo">撤销这次导入</button><span class="mut" style="font-size:12px">会同时撤销导入之后的所有修改</span></div>`;
 }
 
@@ -68,7 +68,7 @@ ${n ? `<div class="selbar"><b>已选 ${n} 笔</b>
 ${S.edit === 'new' ? editor(null) : ''}
 ${rows.length ? rows.map(f => (S.edit === f.id ? editor(f) : row(f))).join('') : `<div class="empty">本月${S.filter === 'all' ? '还没有流水。可以 <a href="#/import">导入账单</a>、<a href="#/copy/' + S.month + '">复制上月流水</a> 或点「+ 记一笔」。' : '没有这一类流水。'}</div>`}
 </div></div>
-<span class="mut" style="font-size:12px;margin-top:10px">转账只在内部账户间移动，不计入收支；退款记为负数支出，显示为 +。点任一行可直接修改。</span>`;
+<span class="mut" style="font-size:12px;margin-top:10px">转账不计入收支；退款冲减支出，显示为 +。点任一行可直接修改。</span>`;
 }
 
 function row(f) {
@@ -109,7 +109,7 @@ function summaryPanel() {
     ['支出 · 工资减扣', cats.filter(c => c.l1 === '工资减扣')],
     ['支出 · 消费支出', cats.filter(c => c.kind === 'expense' && c.l1 !== '工资减扣')],
   ];
-  let html = `<div class="sec s3"><b>两级分类汇总</b><span class="mut" style="font-size:12px">一级始终显示 · 二级只列有发生额的</span></div>`;
+  let html = `<div class="sec s3"><b>两级分类汇总</b></div>`;
   for (const [title, list] of groups) {
     const sum = list.reduce((a, c) => a + (totals[c.id] || 0), 0);
     html += `<div class="cgrp"><span>${title}</span><span class="mono">${fmt(sum)}</span></div>`;

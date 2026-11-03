@@ -43,8 +43,8 @@ function newAccBox(p, o) {
 
 function draw() {
   const a = S.a, c = S.c, edit = !!S.inst;
-  S.root.innerHTML = `<div class="pg">${backStrip('#/holdings', '持仓', '标的管理')}<div class="wrap">
-<div class="lhd"><h1 class="h1">标的</h1><span class="mut" style="font-size:13px">标的挂在一个投资账户下；停用后保留历史，不再出现在盘点里。</span></div>
+  S.root.innerHTML = `<div class="pg">${backStrip('#/holdings', '持仓', '')}<div class="wrap">
+<div class="lhd"><h1 class="h1">标的</h1></div>
 <div class="cols" style="gap:48px;padding-top:20px">
 <section style="flex:1 1 520px;min-width:0;display:flex;flex-direction:column;gap:20px" data-form="a">
 <div class="sec"><b>${edit ? '编辑标的' : '新增标的'}</b></div>
@@ -66,7 +66,6 @@ ${a.opening ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,mi
 </section>
 ${edit ? '' : `<section id="convert" style="flex:1 1 520px;min-width:0;display:flex;flex-direction:column;gap:20px;border-left:1px solid #141414;padding-left:40px" data-form="c">
 <div class="sec"><b>手填账户转为标的</b></div>
-<p style="margin:0;font-size:14px;line-height:1.7">支付宝里的股票型、债券型基金原先按手填余额记。转为标的后由交易算持仓、盘点时自动估值；原手填账户停用，<b>历史快照不变</b>。</p>
 ${S.manual.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:22px">
 <label class="fld">手填账户<select name="manual_account_id">${S.manual.map(m => `<option value="${m.id}"${m.id === +c.manual_account_id ? ' selected' : ''}>${esc(m.name)} · ${m.currency === 'CRYPTO' ? 'USDT' : m.currency}</option>`).join('')}</select></label>
 <label class="fld">标的代码<span style="display:flex;gap:10px;align-items:flex-end"><input type="text" name="code" value="${esc(c.code)}"><button type="button" class="lk" data-lookup="c">识别</button></span><span class="h">${esc(c.hint)}</span></label>
@@ -81,7 +80,7 @@ ${S.manual.length ? `<div style="display:grid;grid-template-columns:repeat(auto-
 <div style="border-top:2px solid #141414;padding-top:14px;display:flex;flex-direction:column;gap:8px"><span class="mut" style="font-size:12px">转换后</span>
 <div class="kv"><span>${esc(S.manual.find(m => m.id === +c.manual_account_id)?.name || '')}（手填）</span><span class="mut">停用 · 历史快照保留</span></div>
 <div class="kv"><span>${esc(c.name || '新标的')}（标的）</span><span>期初买入 ${c.qty ? esc(c.qty) : '—'} 份</span></div>
-<div class="kv"><span>之后盘点</span><span>自动按${c.category === 'fund' ? '净值' : '最新价'}估值</span></div></div>
+<div class="kv"><span>${c.date ? `${+c.date.slice(5, 7)} 月起盘点` : '之后盘点'}</span><span>自动按${c.category === 'fund' ? '净值' : '最新价'}估值</span></div></div>
 <div style="display:flex;gap:10px;border-top:3px solid #141414;padding-top:14px"><a href="#/holdings" class="btn">取消</a><button type="button" class="btn pri" data-act="save-c" data-once="inst-save-c"${busyAttr('inst-save-c')}>转为标的</button></div>`
     : '<div class="empty">目前没有可转换的手填账户。</div>'}
 </section>`}

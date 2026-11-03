@@ -33,25 +33,24 @@ function draw() {
 <div class="lhd"><h1 class="h1">分类与备份</h1><span class="mut" style="font-size:13px">数据存于本机 ${esc(state.meta.db)} · 只监听 127.0.0.1</span></div>
 <div class="cols" style="gap:48px;padding-top:20px">
 <section class="main">
-<div class="sec"><b>收支分类</b><span class="mono mut" style="font-size:12px">一级 11 个固定 · 二级 ${subCount} 个可增删改</span></div>
-<p class="dek" style="font-size:14px;margin-bottom:6px">一级决定账单页和利润表的结构，不可改；点二级即可重命名。拿不准是什么的记「???」，查清再改；确定但没有合适分类的记「其他」，年底把其中反复出现的单独建类。</p>
+<div class="sec"><b>收支分类</b><span class="mono mut" style="font-size:12px">一级 11 · 二级 ${subCount}</span></div>
+<p class="dek" style="font-size:14px;margin-bottom:6px">一级不可改；点二级可重命名。拿不准的记「???」，确定但无合适分类的记「其他」。</p>
 <div class="grp" style="color:#141414;border-bottom:2px solid #141414">收入</div>
 ${l1s('income').map(l1 => `<div class="c1"><span class="n">${esc(l1)}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(l1)}</div></div>`).join('')}
 <div class="grp" style="color:#141414;border-bottom:2px solid #141414;margin-top:10px">支出</div>
 ${l1s('expense').map(l1 => `<div class="c1"><span class="n">${esc(l1)}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(l1)}</div></div>`).join('')}
-<span class="mut" style="font-size:12px;margin-top:10px"><span class="cchip auto" style="min-height:22px;font-size:11px">虚线</span> 由卖出、结汇交易自动生成，不需要手选，也不能删除。删除仍有流水的二级时，需先把流水改到别的分类。</span>
+<span class="mut" style="font-size:12px;margin-top:10px"><span class="cchip auto" style="min-height:22px;font-size:11px">虚线</span> 由交易自动生成，不能删除。删除仍有流水的二级前，需先把流水改到别的分类。</span>
 </section>
 <aside class="side" style="flex:1 1 400px;gap:28px">
 <div class="panel"><div class="sec s3"><b>自动备份</b><span class="mono mut" style="font-size:12px">启动 10 份 · 导入前 10 份</span></div>
-<p style="margin:8px 0 6px;font-size:13px;line-height:1.6">每次启动、每次导入账单前自动备份，各保留最近 10 份；覆盖已有盘点前也会备份。恢复会回到那一刻，之后的修改全部撤销。</p>
+<p style="margin:8px 0 6px;font-size:13px;line-height:1.6">恢复会回到那一刻，之后的修改全部撤销。</p>
 ${list.map(b => `<div class="bk"><span class="mono">${b.time.slice(0, 16).replace(/-/g, '.')}</span><span>${esc(b.label)}</span><span class="mono mut">${(b.size / 1048576).toFixed(1)} MB</span><button type="button" class="lk" data-restore="${esc(b.file)}" style="justify-content:flex-end">恢复到此</button></div>`).join('') || '<div class="mut" style="font-size:13px">还没有备份</div>'}
-${bk.length > 6 ? `<button type="button" class="lk" data-act="all" style="align-self:flex-start;color:#4A4740;font-weight:500">${S.all ? '收起 ▾' : `显示全部 ${bk.length} 份 ▸`}</button>` : ''}
-<span class="mut mono" style="font-size:11px;margin-top:6px;word-break:break-all">${esc(S.backups.dir)}</span></div>
+${bk.length > 6 ? `<button type="button" class="lk" data-act="all" style="align-self:flex-start;color:#4A4740;font-weight:500">${S.all ? '收起 ▾' : `显示全部 ${bk.length} 份 ▸`}</button>` : ''}</div>
 <div class="panel" style="gap:10px"><div class="sec s3"><b>导出</b></div>
-<p style="margin:0;font-size:13px;line-height:1.6">导出全部流水为 CSV（UTF-8），含原始商户与商品说明。</p>
+<p style="margin:0;font-size:13px;line-height:1.6">UTF-8 编码，含原始商户与商品说明。</p>
 <a class="btn" href="/api/export.csv" download style="align-self:flex-start">导出全部流水 CSV</a></div>
 <div class="panel" style="gap:8px"><div class="sec s3"><b>迁移</b></div>
-<p style="margin:0;font-size:13px;line-height:1.6">整个应用的数据就是 <span class="mono">data/wealthx.db</span> 这一个文件，拷到新电脑即可。联网只在盘点时取价格和汇率（以及新增标的时手动点「识别」），请求里只有标的代码与币种。</p></div>
+<p style="margin:0;font-size:13px;line-height:1.6">把 <span class="mono">data/wealthx.db</span> 拷到新电脑即可。联网只在盘点时取价，请求里只有标的代码与币种。</p></div>
 <div style="border-top:2px solid #141414"></div></aside></div></div></div>`;
   bind();
 }

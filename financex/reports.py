@@ -341,9 +341,20 @@ def cash_flow(conn, year):
         by_month[int(f["date"][5:7])].append(f)
     rows = [{"month": m, "balance": ledger.summarize(by_month[m])["balance"], "inv": round(inv[m], 2)}
             for m in months]
+    # 桑基图：收入按一级分类，消费支出按一级分类（未分类的单列）
+    income_l1, consume_l1 = defaultdict(float), defaultdict(float)
+    for f in flows:
+        if f["type"] == "income":
+            income_l1[f["l1"] or "未分类"] += f["amount"]
+        elif f["type"] == "expense" and f["l1"] != "工资减扣":
+            consume_l1[f["l1"] or "未分类"] += f["amount"]
+    s = ledger.summarize(flows)
     return {"year": year, "months": months, "rows": rows,
             "total": {"balance": round(sum(r["balance"] for r in rows), 2),
                       "inv": round(sum(r["inv"] for r in rows), 2)},
+            "flow": {"income": s["income"], "deduct": s["deduct"], "consume": s["consume"],
+                     "income_l1": {k: round(v, 2) for k, v in income_l1.items()},
+                     "consume_l1": {k: round(v, 2) for k, v in consume_l1.items()}},
             "years": years(conn)}
 
 
