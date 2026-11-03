@@ -4,6 +4,8 @@ import io
 import json
 import mimetypes
 import re
+import socket
+import threading
 import traceback
 from datetime import date as Date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -643,6 +645,8 @@ def export_csv(conn):
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "FinanceX"
+    # 保持连接：浏览器不用每个请求都重新连一次（localhost 新建连接要等 IPv6/IPv4 回退，约 0.3 秒）
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
         pass
@@ -663,7 +667,7 @@ class Handler(BaseHTTPRequestHandler):
     def _forbidden_reason(self, method):
         """拒绝其他网站发来的请求：只监听 127.0.0.1 挡不住浏览器里的恶意网页。"""
         port = self.server.server_address[1]
-        allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        allowed = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
         if (self.headers.get("Host") or "").lower() not in allowed:  # 防 DNS 重绑定
             return "Host 不被允许"
         if method == "GET":
@@ -684,7 +688,11 @@ class Handler(BaseHTTPRequestHandler):
     def _handle(self, method):
         reason = self._forbidden_reason(method)
         if reason:
+            self.close_connection = True  # 请求体没读，连接不能再复用
             return self._json(403, {"error": reason})
+        # 先把请求体读完，后面任何提前返回都不会把残留字节留给同一连接的下一个请求
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n) if n else b""
         url = urlparse(self.path)
         path = url.path
         if not path.startswith("/api/"):
@@ -705,10 +713,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, data, "text/csv; charset=utf-8",
                               {"Content-Disposition": f'attachment; filename="{name}"'})
         body = {}
-        n = int(self.headers.get("Content-Length") or 0)
-        if n:
+        if raw:
             try:
-                body = json.loads(self.rfile.read(n).decode("utf-8"))
+                body = json.loads(raw.decode("utf-8"))
             except ValueError:
                 return self._json(400, {"error": "请求格式错误"})
         for m, rx, fn in ROUTES:
@@ -763,7 +770,43 @@ class Handler(BaseHTTPRequestHandler):
         self._handle("DELETE")
 
 
+class _V6Server(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+    daemon_threads = True
+
+
+class _Server(ThreadingHTTPServer):
+    """监听 127.0.0.1，并尽量同时监听 ::1。
+
+    浏览器访问 localhost 时先试 IPv6；只有 IPv4 时每次新建连接都要等回退。"""
+    daemon_threads = True
+
+    def __init__(self, addr, handler):
+        super().__init__(addr, handler)
+        self.v6 = None
+        self._v6_running = False
+        if addr[0] == "127.0.0.1" and socket.has_ipv6:
+            try:
+                self.v6 = _V6Server(("::1", self.server_address[1]), handler)
+            except OSError:
+                self.v6 = None  # 系统没开 IPv6 或端口被占：只用 IPv4
+
+    def serve_forever(self, poll_interval=0.5):
+        if self.v6 and not self._v6_running:
+            self._v6_running = True
+            threading.Thread(target=self.v6.serve_forever, daemon=True).start()
+        super().serve_forever(poll_interval)
+
+    def shutdown(self):
+        if self._v6_running:  # 没启动过就调 shutdown 会一直等
+            self.v6.shutdown()
+        super().shutdown()
+
+    def server_close(self):
+        if self.v6:
+            self.v6.server_close()
+        super().server_close()
+
+
 def serve(port=None):
-    httpd = ThreadingHTTPServer((config.HOST, port or config.PORT), Handler)
-    httpd.daemon_threads = True
-    return httpd
+    return _Server((config.HOST, port or config.PORT), Handler)
